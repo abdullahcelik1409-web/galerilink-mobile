@@ -2,7 +2,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = 'https://xqivvgnzrikwcavcxjsi.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxaXZ2Z256cmlrd2NhdmN4anNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNjAyMTQsImV4cCI6MjA5MDYzNjIxNH0.yyDP-4S-ODwV_XDcw8hAOOO0AEDBrlOPva_dgyzmZ9A';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
