@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "597513563033",
+    "project_id": "galerilink-c95fc",
+    "storage_bucket": "galerilink-c95fc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:597513563033:android:a0f3829a322a4bb3128108",
+        "android_client_info": {
+          "package_name": "com.abdul.galerilink"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANS8Bt5HxxbXMDEd991uKlWfmzPtuRM9s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
