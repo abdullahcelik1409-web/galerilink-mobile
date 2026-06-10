@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
-import { LoginApprovalListener } from '@/components/LoginApprovalListener';
 import { useAuth } from '@/lib/auth-context';
-import { SessionManager } from '@/lib/session-manager';
+import { useDeviceSession } from '@/hooks/use-device-session';
 
 /**
  * İkon bileşeni — Tab bar'da kullanılır.
@@ -27,21 +26,33 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const { user } = useAuth();
+  const { user, isTrialExpired, isLoading } = useAuth();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const router = useRouter();
+  const segments = useSegments();
+  const { registerCurrentDevice } = useDeviceSession();
 
   React.useEffect(() => {
     if (user) {
-      SessionManager.upsertSession(user.id);
+      void registerCurrentDevice(user.id);
     }
-  }, [user]);
+  }, [registerCurrentDevice, user]);
+
+  // Route koruması: Süresi dolmuş kullanıcıları abonelik sayfasına yönlendir
+  useEffect(() => {
+    if (isLoading) return;
+    if (segments.includes('subscription' as never)) return;
+    if (user && isTrialExpired) {
+      router.replace('/subscription');
+    }
+  }, [user, isTrialExpired, isLoading, segments]);
 
   return (
     <View style={{ flex: 1 }}>
-      {/* <LoginApprovalListener /> (Cihaz onay sistemi pasife alındı) */}
       <Tabs
         screenOptions={{
+        freezeOnBlur: true,
         // Tab Bar Stil
         tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.tabIconDefault,
@@ -65,6 +76,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          title: 'Ana Sayfa',
           headerShown: false,
           tabBarIcon: ({ color }) => (
             <TabBarIcon name="home" color={color} />
@@ -108,7 +120,19 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Tab 4: Profil */}
+      {/* Tab 4: Mesajlar */}
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Mesajlar',
+          headerTitle: 'Mesajlar',
+          tabBarIcon: ({ color }) => (
+            <TabBarIcon name="comments" color={color} />
+          ),
+        }}
+      />
+
+      {/* Tab 5: Profil */}
       <Tabs.Screen
         name="profile"
         options={{

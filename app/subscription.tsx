@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   Pressable,
   Animated,
   Dimensions,
+  BackHandler,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,9 +41,8 @@ const PLANS: SubscriptionPlan[] = [
     price: '₺0',
     period: 'AYLIK',
     features: [
-      '10 Aktif İlan Hakkı',
-      'Chrome Uzantısı Erişimi',
-      'Müşteri Modu Güvencesi',
+      '5 Aktif İlan Hakkı',
+      'İlan Aktarımı Erişimi',
       'B2B İlan Portalı',
       '14 Günlük Süre',
     ],
@@ -57,11 +58,10 @@ const PLANS: SubscriptionPlan[] = [
     price: '₺849',
     period: 'AYLIK',
     features: [
-      '15 Aktif İlan Hakkı',
-      'Chrome Uzantısı Erişimi',
+      '10 Aktif İlan Hakkı',
+      'İlan Aktarımı Erişimi',
       'B2B İlan Portalı',
       'Standart Destek Hattı',
-      'Müşteri Modu Erişimi',
     ],
     ctaLabel: 'ABONELİĞİ BAŞLAT',
     isPopular: false,
@@ -75,9 +75,9 @@ const PLANS: SubscriptionPlan[] = [
     price: '₺1.249',
     period: 'AYLIK',
     features: [
-      '50 Aktif İlan Hakkı',
+      '30 Aktif İlan Hakkı',
       'Fırsat Havuzunda Vitrin',
-      'Sınırsız Chrome Aktarımı',
+      'Sınırsız İlan Aktarımı',
       'VIP İlan Analiz',
       'Öncelikli Destek',
     ],
@@ -95,7 +95,7 @@ const PLANS: SubscriptionPlan[] = [
     features: [
       'Sınırsız İlan Yükleme',
       'Fırsat Havuzu (Vitrini)',
-      'Sınırsız Chrome Aktarımı',
+      'Sınırsız İlan Aktarımı',
       'Çoklu Kullanıcı Desteği',
       '7/24 VIP Destek Hattı',
     ],
@@ -281,15 +281,34 @@ function PlanCard({ plan, colors, theme }: { plan: SubscriptionPlan, colors: any
 export default function SubscriptionScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { isTrialExpired } = useAuth();
   const colors = Colors[theme];
+
+  // Android geri tuşunu engelle (expired kullanıcılar için)
+  useEffect(() => {
+    if (!isTrialExpired) return;
+    const onBackPress = () => true; // true = geri gitmeyi engelle
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [isTrialExpired]);
+
+  const handleBack = () => {
+    if (isTrialExpired) return; // expired kullanıcı geri dönemez
+    router.back();
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen
+        options={{
+          gestureEnabled: !isTrialExpired,
+        }}
+      />
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <Pressable
-          style={styles.backButton}
-          onPress={() => router.back()}
+          style={[styles.backButton, isTrialExpired && { opacity: 0.3 }]}
+          onPress={handleBack}
           hitSlop={12}
         >
           <FontAwesome name="arrow-left" size={14} color={colors.textSecondary} />

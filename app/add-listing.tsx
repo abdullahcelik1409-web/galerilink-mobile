@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   Switch,
   Modal,
   FlatList,
@@ -20,6 +19,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { 
@@ -28,17 +28,21 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
-import { optimizeImage } from '@/lib/ImageOptimizer';
+import { optimizeImage } from '@/lib/image-optimizer';
 import { HierarchicalSelector } from '@/components/HierarchicalSelector';
 import { TURKEY_CITIES } from '@/constants/TurkeyCities';
 import { TaxonomyLevel } from '@/lib/taxonomy-types';
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system/legacy';
 import { ExpertiseSelector, ExpertiseData } from '@/components/ExpertiseSelector';
+import { useSubscriptionLimit } from '@/hooks/use-subscription-limit';
+import { imageUploadService } from '@/features/listings/api/image-upload-service';
+import { listingRepository } from '@/features/listings/api/listing-repository';
+import { BlockingState, ScreenLoader } from '@/components/states/BlockingState';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_IMAGES = 10;
 
 const STEPS = [
   { id: 'vision', label: 'VİZYON', icon: 'images-outline' },
@@ -48,7 +52,8 @@ const STEPS = [
   { id: 'appraisal', label: 'EKSPERTİZ', icon: 'document-text-outline' },
 ];
 
-const YEARS = Array.from({ length: 27 }, (_, i) => (2026 - i).toString());
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 27 }, (_, i) => (CURRENT_YEAR - i).toString());
 
 interface ImageState {
   uri: string;
@@ -61,18 +66,29 @@ interface ImageState {
 export default function AddListingScreen() {
   const router = useRouter();
   const { theme } = useTheme();
+  const { isTrialExpired } = useAuth();
   const colors = Colors[theme];
   const { height: windowHeight } = useWindowDimensions();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectorKey, setSelectorKey] = useState(0);
+  const isMountedRef = useRef(true);
   
-  // Ekran her odağa geldiğinde hiyerarşiyi tazelemeye zorla (Admin onayı sonrası anlık veri için)
+  const { isLimitReached, maxListings, isLoading, refreshLimit } = useSubscriptionLimit();
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  
+  // Ekran her odağa geldiğinde hiyerarşiyi tazelemeye zorla (Admin onayı sonrası anlık veri için) ve limiti güncelle
   useFocusEffect(
     useCallback(() => {
       setSelectorKey(prev => prev + 1);
-    }, [])
+      refreshLimit();
+    }, [refreshLimit])
   );
   
   // Form State
@@ -105,23 +121,68 @@ export default function AddListingScreen() {
       heavy_damage: 'Hayır',
     },
     selections: [] as any[],
-    expertise: {} as ExpertiseData,
+    expertise: [] as any[],
     manualLevel: null as TaxonomyLevel | null,
   });
 
   const progress = (currentStep + 1) / STEPS.length;
 
+  if (isLoading) {
+    return <ScreenLoader colors={colors} />;
+  }
+
+  if (isTrialExpired) {
+    return (
+      <BlockingState
+        colors={colors}
+        icon="time"
+        iconColor="#EF4444"
+        title="Deneme S�resi Doldu"
+        message="Deneme s�reniz doldu, devam etmek i�in bir paket se�in."
+        primaryLabel="PAKET SE�"
+        onPrimaryPress={() => router.push('/subscription')}
+        onSecondaryPress={() => router.back()}
+      />
+    );
+  }
+
+  if (isLimitReached && maxListings !== Infinity) {
+    return (
+      <BlockingState
+        colors={colors}
+        icon="flame"
+        iconColor="#F59E0B"
+        title="�lan Limitine Ula��ld�"
+        message={`Mevcut paketinizin izin verdi�i maksimum ilan say�s�na ula�t�n�z (${maxListings} �lan). Daha fazla ilan eklemek i�in paketinizi y�kseltin veya eski ilanlar�n�z� pasife al�n.`}
+        primaryLabel="��MD� PAKET� Y�KSELT"
+        onPrimaryPress={() => router.push('/subscription')}
+        onSecondaryPress={() => router.back()}
+      />
+    );
+  }
   // --- Handlers ---
 
   const handlePickImages = async () => {
+    const remainingSlots = Math.max(0, MAX_IMAGES - images.length);
+    if (remainingSlots === 0) {
+      Alert.alert('Limit', `En fazla ${MAX_IMAGES} fotoğraf ekleyebilirsiniz.`);
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      const newImages: ImageState[] = result.assets.map(asset => ({
+      const selectedAssets = result.assets.slice(0, remainingSlots);
+      if (result.assets.length > remainingSlots) {
+        Alert.alert('Limit', `İlk ${remainingSlots} fotoğraf eklendi. En fazla ${MAX_IMAGES} fotoğraf kullanabilirsiniz.`);
+      }
+
+      const newImages: ImageState[] = selectedAssets.map(asset => ({
         uri: asset.uri,
         isOptimizing: true,
         isOptimized: false,
@@ -129,9 +190,10 @@ export default function AddListingScreen() {
 
       setImages(prev => [...prev, ...newImages]);
 
-      // Parallel optimization
-      newImages.forEach(async (img, idx) => {
+      for (const img of newImages) {
         const optimizationResult = await optimizeImage(img.uri);
+        if (!isMountedRef.current) return;
+
         setImages(prev => {
           const updated = [...prev];
           const globalIdx = prev.findIndex(item => item.uri === img.uri);
@@ -146,7 +208,7 @@ export default function AddListingScreen() {
           }
           return updated;
         });
-      });
+      }
     }
   };
 
@@ -208,53 +270,23 @@ export default function AddListingScreen() {
       .replace(/^-|-$/g, '');
   };
 
-  const uploadToSupabase = async (uri: string) => {
-    try {
-      if (!uri) throw new Error("Geçerli bir görsel yolu bulunamadı.");
-      
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
-      const filePath = `cars/${fileName}`;
-      
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      const arrayBuffer = decode(base64);
-
-      const { error: uploadError } = await supabase.storage.from('car_images').upload(filePath, arrayBuffer, {
-        contentType: 'image/webp',
-        cacheControl: '3600',
-        upsert: false
-      });
-      
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('car_images').getPublicUrl(filePath);
-      
-      if (!data?.publicUrl || data.publicUrl.includes('file://')) {
-        throw new Error("Görsel yüklendi ancak geçerli bir bağlantı alınamadı.");
-      }
-
-      return data.publicUrl;
-    } catch (err) {
-      console.error("[uploadToSupabase] Error:", err);
-      throw err;
-    }
-  };
+  const uploadCarImage = useCallback((uri: string) => (
+    imageUploadService.uploadCarImage({ uri })
+  ), []);
 
   const handleSubmit = async () => {
     // 1. UI Kilidi ve Loading State (Hemen tetiklenir)
     setIsSubmitting(true);
     
     try {
-      console.log("[AddListing] Starting parallel submission process...");
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Oturum bulunamadı. Lütfen tekrar giriş yapınız.");
 
       // 2. Fotoğrafları Yükle ve Taxonomy'yi Hazırla
-      console.log("[AddListing] Uploading images...");
       
       // Sadece optimize edilmiş veya orijinal URI'si olanları filtrele
       const validImages = images.filter(img => img.optimizedUri || img.uri);
-      const uploadTasks = validImages.map(img => uploadToSupabase(img.optimizedUri || img.uri));
+      const uploadTasks = validImages.map(img => uploadCarImage(img.optimizedUri || img.uri));
       
       let taxonomyTask = Promise.resolve(formData.package_id);
       if (isManualMode) {
@@ -365,8 +397,7 @@ export default function AddListingScreen() {
           : null,
       };
 
-      const { error: dbError } = await supabase.from('cars').insert(carPayload);
-      if (dbError) throw dbError;
+      await listingRepository.createPublished(carPayload);
 
       // 4. Başarı Bildirimi
       Alert.alert("Başarılı", "İlanınız yıldırım hızıyla yayınlandı.");
@@ -374,7 +405,7 @@ export default function AddListingScreen() {
 
     } catch (e: any) {
       // Kurşun Geçirmez Hata Bildirimi (UI'a Yansıtma)
-      console.error("[AddListing] CRITICAL SUBMIT ERROR:", e);
+      console.warn('[AddListing] Submit failed.');
       Alert.alert(
         "İlan Yayınlama Hatası", 
         `Teknik Detay: ${e.message || "Bilinmeyen bir hata oluştu."}\n\nLütfen internet bağlantınızı kontrol edip tekrar deneyiniz.`
@@ -411,7 +442,12 @@ export default function AddListingScreen() {
       <View style={styles.imageGrid}>
         {images.map((img, i) => (
           <View key={i} style={[styles.imageCard, { backgroundColor: colors.surface }]}>
-            <Image source={{ uri: img.uri }} style={styles.imagePreview} />
+            <Image
+              source={{ uri: img.optimizedUri ?? img.uri }}
+              style={styles.imagePreview}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
             {img.isOptimizing && (
               <View style={styles.imageOverlay}>
                 <ActivityIndicator color="#FFFFFF" size="small" />
@@ -798,15 +834,45 @@ const formatNumber = (val: string) => {
 
 // --- Sub Components ---
 
+const DropdownOption = React.memo(({ item, isSelected, colors, onSelect }: any) => (
+  <Pressable
+    onPress={() => onSelect(item)}
+    style={({ pressed }) => ({
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      marginBottom: 2,
+      borderRadius: 10,
+      backgroundColor: isSelected
+        ? (colors.tint + '15')
+        : pressed ? (colors.surface) : 'transparent',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    })}
+  >
+    <Text style={{
+      color: isSelected ? colors.tint : colors.text,
+      fontSize: 16,
+      fontWeight: isSelected ? '800' : '500'
+    }}>
+      {item}
+    </Text>
+    {isSelected && <Ionicons name="checkmark-circle" size={20} color={colors.tint} />}
+  </Pressable>
+));
+
 const DropdownInput = ({ label, value, items, onSelect, disabled, placeholder }: any) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const [visible, setVisible] = useState(false);
   const [search, setSearch] = useState('');
+  const deferredSearch = React.useDeferredValue(search);
 
-  const filteredItems = search.trim()
-    ? items.filter((item: string) => item.toLowerCase().includes(search.toLowerCase()))
-    : items;
+  const filteredItems = React.useMemo(() => {
+    if (!deferredSearch.trim()) return items;
+    const normalizedSearch = deferredSearch.toLowerCase();
+    return items.filter((item: string) => item.toLowerCase().includes(normalizedSearch));
+  }, [items, deferredSearch]);
 
   const handleOpen = () => {
     if (disabled) return;
@@ -814,10 +880,19 @@ const DropdownInput = ({ label, value, items, onSelect, disabled, placeholder }:
     setVisible(true);
   };
 
-  const handleSelect = (item: string) => {
+  const handleSelect = React.useCallback((item: string) => {
     onSelect(item);
     setVisible(false);
-  };
+  }, [onSelect]);
+
+  const renderItem = React.useCallback(({ item }: { item: string }) => (
+    <DropdownOption
+      item={item}
+      isSelected={value === item}
+      colors={colors}
+      onSelect={handleSelect}
+    />
+  ), [colors, handleSelect, value]);
 
   return (
     <View style={styles.inputContainer}>
@@ -915,40 +990,16 @@ const DropdownInput = ({ label, value, items, onSelect, disabled, placeholder }:
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="always"
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              initialNumToRender={12}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
               ListEmptyComponent={
                 <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                   <Ionicons name="search-outline" size={32} color={colors.textMuted} />
                   <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: 8 }}>Sonuç bulunamadı.</Text>
                 </View>
               }
-              renderItem={({ item }: { item: string }) => {
-                const isSelected = value === item;
-                return (
-                  <Pressable 
-                    onPress={() => handleSelect(item)}
-                    style={({ pressed }) => ({ 
-                      paddingVertical: 14, 
-                      paddingHorizontal: 12,
-                      marginBottom: 2,
-                      borderRadius: 10,
-                      backgroundColor: isSelected 
-                        ? (colors.tint + '15') 
-                        : pressed ? (colors.surface) : 'transparent',
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    })}
-                  >
-                    <Text style={{ 
-                      color: isSelected ? colors.tint : colors.text, 
-                      fontSize: 16, 
-                      fontWeight: isSelected ? '800' : '500',
-                      flex: 1,
-                    }}>{item}</Text>
-                    {isSelected && <Ionicons name="checkmark-circle" size={22} color={colors.tint} />}
-                  </Pressable>
-                );
-              }}
+              renderItem={renderItem}
             />
           </Pressable>
         </Pressable>
@@ -1217,3 +1268,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 });
+
+

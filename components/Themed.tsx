@@ -6,7 +6,7 @@
 import { Text as DefaultText, View as DefaultView } from 'react-native';
 
 import Colors from '@/constants/Colors';
-import { useColorScheme } from './useColorScheme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type ThemeProps = {
   lightColor?: string;
@@ -26,8 +26,8 @@ export function useThemeColor(
   if (colorFromProps) {
     return colorFromProps;
   } else {
-    // @ts-ignore - We know this is a string now
-    return Colors[theme][colorName];
+    const palette = Colors[theme];
+    return palette[colorName];
   }
 }
 
@@ -44,3 +44,5 @@ export function View(props: ViewProps) {
 
   return <DefaultView style={[{ backgroundColor }, style]} {...otherProps} />;
 }
+
+

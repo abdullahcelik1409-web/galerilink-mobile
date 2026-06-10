@@ -8,31 +8,15 @@ export interface OptimizationResult {
   error?: string;
 }
 
-/**
- * React Native / Expo implementation of client-side WebP compression.
- * Uses native expo-image-manipulator for high performance.
- */
 export async function optimizeImage(
   uri: string,
   maxWidthOrHeight: number = 1200,
   quality: number = 0.75
 ): Promise<OptimizationResult> {
   try {
-    // 1. Get image info to check if we need resizing
-    const actions: ImageManipulator.Action[] = [];
-    
-    // 2. Add resize action if image is too large
-    // (Note: ImageManipulator handles aspect ratio automatically if only one dimension is provided)
-    actions.push({
-      resize: {
-        width: maxWidthOrHeight,
-      },
-    });
-
-    // 3. Compress and convert to WebP
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      actions,
+      [{ resize: { width: maxWidthOrHeight } }],
       {
         compress: quality,
         format: ImageManipulator.SaveFormat.WEBP,
@@ -46,8 +30,8 @@ export async function optimizeImage(
       isOptimized: true,
     };
   } catch (error) {
-    console.error('[ImageOptimizer] Optimization failed:', error);
-    
+    console.warn('[image-optimizer] Optimization failed.');
+
     return {
       uri,
       width: 0,

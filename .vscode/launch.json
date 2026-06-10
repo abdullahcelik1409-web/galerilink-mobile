@@ -11,15 +11,12 @@
     {
       "name": "Expo Debug (Attach)",
       "type": "expo",
-      "request": "attach",
-      "projectRoot": "${workspaceFolder}"
+      "request": "attach"
     },
     {
       "name": "Expo Launch (Android)",
       "type": "expo",
-      "request": "launch",
-      "platform": "android",
-      "projectRoot": "${workspaceFolder}"
+      "request": "launch"
     }
   ]
 }

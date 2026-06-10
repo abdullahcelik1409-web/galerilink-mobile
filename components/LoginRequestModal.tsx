@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { SessionManager } from '@/lib/session-manager';
 import { useTheme } from '@/lib/theme-context';
@@ -22,6 +22,14 @@ export function LoginRequestModal({ visible, userId, onApproved, onCancel }: Log
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [maxSessions, setMaxSessions] = useState(1);
+  const approvalChannelRef = useRef<ReturnType<typeof SessionManager.listenForApproval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      approvalChannelRef.current?.unsubscribe();
+      approvalChannelRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const fetchLimit = async () => {
@@ -38,6 +46,8 @@ export function LoginRequestModal({ visible, userId, onApproved, onCancel }: Log
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (timeLeft === 0 && step === 'waiting') {
+      approvalChannelRef.current?.unsubscribe();
+      approvalChannelRef.current = null;
       setStep('timeout');
     }
     return () => clearInterval(timer);
@@ -59,10 +69,15 @@ export function LoginRequestModal({ visible, userId, onApproved, onCancel }: Log
       setStep('waiting');
 
       // Onay dinle
-      SessionManager.listenForApproval(data.id, (status) => {
+      approvalChannelRef.current?.unsubscribe();
+      approvalChannelRef.current = SessionManager.listenForApproval(data.id, (status) => {
         if (status === 'approved') {
+          approvalChannelRef.current?.unsubscribe();
+          approvalChannelRef.current = null;
           onApproved();
         } else if (status === 'rejected') {
+          approvalChannelRef.current?.unsubscribe();
+          approvalChannelRef.current = null;
           setStep('rejected');
         }
       });

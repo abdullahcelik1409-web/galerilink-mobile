@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -27,6 +27,39 @@ interface MultiSelectModalProps {
   placeholder?: string;
 }
 
+const MultiSelectRow = React.memo(({
+  item,
+  isSelected,
+  colors,
+  theme,
+  onToggle,
+}: {
+  item: string;
+  isSelected: boolean;
+  colors: any;
+  theme: string;
+  onToggle: (item: string) => void;
+}) => (
+  <TouchableOpacity
+    style={[styles.itemRow, { borderBottomColor: colors.surfaceBorder + '40' }]}
+    onPress={() => onToggle(item)}
+    activeOpacity={0.7}
+  >
+    <Text style={[styles.itemText, { color: isSelected ? colors.text : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
+      {item}
+    </Text>
+    <View style={[
+      styles.checkbox,
+      {
+        borderColor: isSelected ? colors.text : colors.textMuted + '40',
+        backgroundColor: isSelected ? colors.text : 'transparent'
+      }
+    ]}>
+      {isSelected && <Ionicons name="checkmark" size={14} color={theme === 'dark' ? '#09090B' : '#FAFAFA'} />}
+    </View>
+  </TouchableOpacity>
+));
+
 export default function MultiSelectModal({
   isVisible,
   onClose,
@@ -42,6 +75,8 @@ export default function MultiSelectModal({
 
   const [tempSelected, setTempSelected] = useState<string[]>(initialSelected);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const selectedSet = useMemo(() => new Set(tempSelected), [tempSelected]);
 
   // Sync state when modal opens
   React.useEffect(() => {
@@ -52,13 +87,14 @@ export default function MultiSelectModal({
   }, [isVisible, initialSelected]);
 
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return items;
+    if (!deferredSearch.trim()) return items;
+    const normalizedSearch = deferredSearch.toLocaleLowerCase('tr-TR');
     return items.filter(item => 
-      item.toLocaleLowerCase('tr-TR').includes(search.toLocaleLowerCase('tr-TR'))
+      item.toLocaleLowerCase('tr-TR').includes(normalizedSearch)
     );
-  }, [items, search]);
+  }, [items, deferredSearch]);
 
-  const toggleItem = (item: string) => {
+  const toggleItem = useCallback((item: string) => {
     setTempSelected(prev => {
       if (prev.includes(item)) {
         return prev.filter(i => i !== item);
@@ -66,7 +102,7 @@ export default function MultiSelectModal({
         return [...prev, item];
       }
     });
-  };
+  }, []);
 
   const handleApply = () => {
     onApply(tempSelected);
@@ -76,6 +112,16 @@ export default function MultiSelectModal({
   const handleClear = () => {
     setTempSelected([]);
   };
+
+  const renderItem = useCallback(({ item }: { item: string }) => (
+    <MultiSelectRow
+      item={item}
+      isSelected={selectedSet.has(item)}
+      colors={colors}
+      theme={theme}
+      onToggle={toggleItem}
+    />
+  ), [colors, selectedSet, theme, toggleItem]);
 
   return (
     <Modal
@@ -143,29 +189,10 @@ export default function MultiSelectModal({
             data={filteredItems}
             keyExtractor={item => item}
             contentContainerStyle={styles.list}
-            renderItem={({ item }) => {
-              const isSelected = tempSelected.includes(item);
-              return (
-                <TouchableOpacity 
-                  style={[styles.itemRow, { borderBottomColor: colors.surfaceBorder + '40' }]} 
-                  onPress={() => toggleItem(item)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.itemText, { color: isSelected ? colors.text : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }]}>
-                    {item}
-                  </Text>
-                  <View style={[
-                    styles.checkbox, 
-                    { 
-                      borderColor: isSelected ? colors.text : colors.textMuted + '40',
-                      backgroundColor: isSelected ? colors.text : 'transparent'
-                    }
-                  ]}>
-                    {isSelected && <Ionicons name="checkmark" size={14} color={theme === 'dark' ? '#09090B' : '#FAFAFA'} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
+            renderItem={renderItem}
+            initialNumToRender={14}
+            maxToRenderPerBatch={8}
+            updateCellsBatchingPeriod={50}
           />
         </Pressable>
       </Pressable>

@@ -1,34 +1,33 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-  Alert,
-  TextInput,
-  Dimensions,
-  Modal,
-  SafeAreaView,
-  FlatList,
-  Image,
-  Platform,
-  Linking,
-} from 'react-native';
-import Carousel from 'react-native-reanimated-carousel';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { StatusBar } from 'expo-status-bar';
+import ExpertiseSchema from '@/components/ExpertiseSchema';
+import { ExpertiseSelector } from '@/components/ExpertiseSelector';
+import SellerContactCard from '@/components/SellerContactCard';
+import Colors from '@/constants/Colors';
+import { useAuth } from '@/lib/auth-context';
+import { useSubscriptionLimit } from '@/hooks/use-subscription-limit';
+import { getRouteParam } from '@/lib/security';
+import { useTheme } from '@/lib/theme-context';
+import { FontAwesome } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { processMultipleImages } from '@/lib/image-processor';
-import { useAuth } from '@/lib/auth-context';
-import Colors from '@/constants/Colors';
-import ExpertiseSchema from '@/components/ExpertiseSchema';
-import { useTheme } from '@/lib/theme-context';
-import SellerContactCard from '@/components/SellerContactCard';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
+import { listingRepository } from '@/features/listings/api/listing-repository';
+import { prepareListingImages, useListingDetail } from '@/features/listings/hooks/use-listing-detail';
+import {
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    View
+} from 'react-native';
+import { Image } from 'expo-image';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -44,32 +43,38 @@ function SpecItem({ label, value, colors }: { label: string; value: string; colo
 
 function HeroGallery({ car, statusColor, statusLabel, onBack, colors }: { car: any, statusColor: string, statusLabel: string, onBack: () => void, colors: any }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const images = car.images || [];
 
   return (
     <View style={[styles.heroContainer, { backgroundColor: colors.surface }]}>
-      {car.images?.length > 0 ? (
-        <>
-          <GestureHandlerRootView style={{ width: SCREEN_WIDTH, height: 280, backgroundColor: '#333' }}>
-            <Carousel
-              loop
-              width={SCREEN_WIDTH}
-              height={280}
-              autoPlay={false}
-              data={car.images}
-              onSnapToItem={(index) => setCurrentImageIndex(index)}
-              style={{ backgroundColor: '#333' }}
-              renderItem={({ item }) => (
-                <View style={{ width: SCREEN_WIDTH, height: 280 }}>
-                  <Image
-                    source={{ uri: item as string }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
-                </View>
-              )}
-            />
-          </GestureHandlerRootView>
-        </>
+      {images.length > 0 ? (
+        <FlatList
+          horizontal
+          pagingEnabled
+          data={images}
+          keyExtractor={(uri, index) => `${uri}-${index}`}
+          showsHorizontalScrollIndicator={false}
+          getItemLayout={(_, index) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * index,
+            index,
+          })}
+          onMomentumScrollEnd={(event) => {
+            const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+            setCurrentImageIndex(nextIndex);
+          }}
+          renderItem={({ item }) => (
+            <View style={styles.heroImageSlide}>
+              <Image
+                source={{ uri: item as string }}
+                style={styles.heroImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={150}
+              />
+            </View>
+          )}
+        />
       ) : (
         <View style={styles.noImage}>
           <FontAwesome name="camera" size={32} color={colors.textMuted} />
@@ -86,10 +91,10 @@ function HeroGallery({ car, statusColor, statusLabel, onBack, colors }: { car: a
         <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
       </View>
 
-      {car.images?.length > 0 && (
+      {images.length > 0 && (
         <View style={styles.imageCounter}>
           <Text style={styles.imageCounterText}>
-            {currentImageIndex + 1} / {car.images.length}
+            {currentImageIndex + 1} / {images.length}
           </Text>
         </View>
       )}
@@ -97,63 +102,52 @@ function HeroGallery({ car, statusColor, statusLabel, onBack, colors }: { car: a
   );
 }
 
+function ListingDetailSkeleton({ colors }: { colors: any }) {
+  return (
+    <View style={[styles.skeletonContainer, { backgroundColor: colors.background }]}>
+      <View style={[styles.skeletonHero, { backgroundColor: colors.surface }]} />
+      <View style={styles.skeletonDetailContent}>
+        <View style={[styles.detailSkeletonLineLg, { backgroundColor: colors.surface }]} />
+        <View style={[styles.detailSkeletonLineMd, { backgroundColor: colors.surface }]} />
+        <View style={styles.detailSkeletonGrid}>
+          {[0, 1, 2, 3].map((item) => (
+            <View key={item} style={[styles.detailSkeletonBox, { backgroundColor: colors.surface }]} />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function ListingDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const id = getRouteParam(params.id) ?? '';
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile, isTrialExpired } = useAuth();
+  const { canAdd } = useSubscriptionLimit();
   const { theme } = useTheme();
   const colors = Colors[theme];
 
-  const [car, setCar] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { car, setCar, sourceTable, isLoading, updateExpertise } = useListingDetail(id);
   const [priceStr, setPriceStr] = useState('');
   const [description, setDescription] = useState('');
   const [damageReport, setDamageReport] = useState('');
+  const [expertise, setExpertise] = useState<any>({});
   const [isPublishing, setIsPublishing] = useState(false);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  const [isOpportunity, setIsOpportunity] = useState(false);
+  const [opportunityReason, setOpportunityReason] = useState('');
+  const [opportunityExpires, setOpportunityExpires] = useState('48');
 
   useEffect(() => {
-    fetchCarDetails();
-    fetchCurrentUserProfile();
-  }, [id]);
-
-  const fetchCurrentUserProfile = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('status, hesap_durumu')
-        .eq('id', user.id)
-        .single();
-      if (!error) setCurrentUserProfile(data);
-    } catch (e) {
-      console.error('Error fetching profile:', e);
-    }
-  };
-
-  const fetchCarDetails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('cars')
-        .select(`
-          *,
-          profiles:seller_id ( galeri_adi, ad_soyad, company_name, phone, city, district, hesap_durumu )
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      setCar(data);
-      setPriceStr(data.price_b2b ? data.price_b2b.toString() : '');
-      setDescription(data.description || '');
-      setDamageReport(data.damage_report || '');
-    } catch (e: any) {
-      Alert.alert('Hata', 'İlan detayları yüklenemedi: ' + e.message);
-      router.back();
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    if (!car) return;
+    setExpertise(car.expertise || {});
+    setIsOpportunity(car.is_opportunity ?? false);
+    setOpportunityReason(car.opportunity_reason || '');
+    setOpportunityExpires(car.opportunity_expires_at ? '48' : '48');
+    setPriceStr(car.price_b2b ? Number(car.price_b2b).toLocaleString('tr-TR') : '');
+    setDescription(car.description || '');
+    setDamageReport(car.damage_report || '');
+  }, [car]);
 
   const handlePriceChange = (text: string) => {
     const numericText = text.replace(/[^0-9]/g, '');
@@ -165,7 +159,23 @@ export default function ListingDetailScreen() {
     setPriceStr(formatted);
   };
 
+  const handleExpertiseChange = async (value: any) => {
+    try {
+      const updatedExpertise = await updateExpertise(value);
+      setExpertise(updatedExpertise);
+    } catch (error) {
+      setExpertise(car?.expertise || {});
+      console.error('Ekspertiz guncelleme hatasi:', error);
+      Alert.alert('Hata', 'Ekspertiz bilgisi guncellenemedi.');
+    }
+  };
+
   const handlePublish = async () => {
+    if (!canAdd || isTrialExpired) {
+      router.push('/subscription');
+      return;
+    }
+
     if (!car) return;
     const numericPrice = parseInt(priceStr.replace(/[^0-9]/g, ''), 10) || 0;
     if (numericPrice <= 0) {
@@ -174,25 +184,36 @@ export default function ListingDetailScreen() {
     }
     setIsPublishing(true);
     try {
-      let newImageUrls = car.images;
-      const hasExternalImages = car.images?.some((url: string) => !url.includes('supabase.co'));
-      if (hasExternalImages) {
-        const imagesToProcess = car.images.slice(0, 10);
-        newImageUrls = await processMultipleImages(imagesToProcess, car.id);
-      }
-      const { error } = await supabase
-        .from('cars')
-        .update({
+      const newImageUrls = await prepareListingImages(car);
+
+      if (sourceTable === 'cars_drafts') {
+        await listingRepository.publishDraft({
+          draftId: id,
+          numericPrice,
+          description,
+          damageReport,
+          images: newImageUrls,
+          isOpportunity,
+          opportunityReason,
+          opportunityExpiresHours: parseInt(opportunityExpires, 10) || 48,
+        });
+      } else {
+        await listingRepository.updatePublished(car.id, {
           price_b2b: numericPrice,
-          description: description,
+          description,
           damage_report: damageReport,
           images: newImageUrls,
           status: 'published',
           is_active: true,
-        })
-        .eq('id', car.id);
-      if (error) throw error;
-      Alert.alert('Yayınlandı', 'İlanınız başarıyla güncellendi ve yayınlandı.', [{ text: 'Tamam', onPress: () => router.replace('/(tabs)' as any) }]);
+          is_opportunity: isOpportunity,
+          opportunity_reason: isOpportunity ? opportunityReason : null,
+          opportunity_expires_at: isOpportunity
+            ? new Date(Date.now() + (parseInt(opportunityExpires, 10) || 48) * 60 * 60 * 1000).toISOString()
+            : null,
+        });
+      }
+
+      Alert.alert('Yayınlandı', 'İlan yayınlandı.', [{ text: 'Tamam', onPress: () => router.replace('/(tabs)' as any) }]);
     } catch (error: any) {
       Alert.alert('Hata', error.message);
     } finally {
@@ -201,21 +222,16 @@ export default function ListingDetailScreen() {
   };
 
   if (isLoading) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.textMuted }]}>Yükleniyor...</Text>
-      </View>
-    );
+    return <ListingDetailSkeleton colors={colors} />;
   }
 
   if (!car) return null;
 
   const isEditable = user && car.seller_id === user.id && car.status === 'draft';
-  const isVerified = currentUserProfile?.status === 'approved' || currentUserProfile?.hesap_durumu === 'onaylandi' || (user && car.seller_id === user.id);
+  const isVerified = profile?.status === 'approved' || profile?.hesap_durumu === 'onaylandi' || (user && car.seller_id === user.id);
   const statusColor = car.status === 'published' ? colors.success : colors.warning;
   const statusLabel = car.status === 'published' ? 'YAYINDA' : 'TASLAK';
-  const expertiseData = car.expertise || {};
+  const expertiseData = expertise || car.expertise || {};
   const expertiseCount = Object.keys(expertiseData).length;
 
   return (
@@ -230,7 +246,20 @@ export default function ListingDetailScreen() {
 
         <View style={styles.infoSection}>
           <Text style={[styles.vehicleTitle, { color: colors.text }]}>{car.title || `${car.brand} ${car.model}`}</Text>
-          <Text style={[styles.vehicleSubtitle, { color: colors.tint }]}>{car.brand} {car.series} {car.model}</Text>
+          <View style={styles.vehicleMeta}>
+            <View style={styles.vehicleMetaRow}>
+              <Text style={[styles.vehicleMetaLabel, { color: colors.textMuted }]}>Marka:</Text>
+              <Text style={[styles.vehicleMetaValue, { color: colors.text }]}>{car.brand || '—'}</Text>
+            </View>
+            <View style={styles.vehicleMetaRow}>
+              <Text style={[styles.vehicleMetaLabel, { color: colors.textMuted }]}>Seri:</Text>
+              <Text style={[styles.vehicleMetaValue, { color: colors.text }]}>{car.series || '—'}</Text>
+            </View>
+            <View style={styles.vehicleMetaRow}>
+              <Text style={[styles.vehicleMetaLabel, { color: colors.textMuted }]}>Model:</Text>
+              <Text style={[styles.vehicleMetaValue, { color: colors.text }]}>{car.model || '—'}</Text>
+            </View>
+          </View>
           <Text style={[styles.vehicleSubText, { color: colors.textSecondary }]}>{car.year} • {car.km?.toLocaleString('tr-TR')} KM</Text>
         </View>
 
@@ -329,7 +358,11 @@ export default function ListingDetailScreen() {
 
         <View style={styles.expertiseSection}>
           <Text style={[styles.cardHeader, { color: colors.textMuted }]}>EKSPERTİZ DURUMU</Text>
-          <ExpertiseSchema expertise={expertiseData} />
+          {car.status === 'draft' ? (
+            <ExpertiseSelector value={expertiseData} onChange={handleExpertiseChange} />
+          ) : (
+            <ExpertiseSchema expertise={expertiseData} />
+          )}
           {expertiseCount > 0 && (
             <View style={styles.expertiseSummary}>
               <FontAwesome name="info-circle" size={13} color={colors.textMuted} />
@@ -340,7 +373,52 @@ export default function ListingDetailScreen() {
 
         {car.status === 'draft' && (
           <View style={styles.actionSection}>
-            <Pressable style={({ pressed }) => [styles.publishBtn, { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder, borderWidth: 1 }, isPublishing && styles.publishBtnDisabled, pressed && !isPublishing && { opacity: 0.85, transform: [{ scale: 0.98 }] }]} onPress={handlePublish} disabled={isPublishing}>
+            <View style={[styles.toggleContainer, { backgroundColor: colors.surface }]}>
+              <View>
+                <Text style={[styles.toggleLabel, { color: colors.text }]}>FIRSAT İLANI</Text>
+                <Text style={[styles.toggleSub, { color: colors.textSecondary }]}>Acil satılık olarak işaretle.</Text>
+              </View>
+              <Switch
+                value={isOpportunity}
+                onValueChange={setIsOpportunity}
+                trackColor={{ false: colors.surfaceElevated, true: colors.success }}
+              />
+            </View>
+
+            {isOpportunity && (
+              <View style={styles.opportunityForm}>
+                <View>
+                  <Text style={[styles.opportunityLabel, { color: colors.textSecondary }]}>FIRSAT NEDENİ</Text>
+                  <View style={styles.chipRow}>
+                    {['Nakit İhtiyacı', 'Stok Yenileme', 'Dükkan Değişikliği', 'Diğer'].map((reason) => (
+                      <Pressable
+                        key={reason}
+                        onPress={() => setOpportunityReason(reason)}
+                        style={[styles.chip, { backgroundColor: opportunityReason === reason ? colors.tint + '20' : colors.surface, borderColor: opportunityReason === reason ? colors.tint : colors.surfaceBorder }]}
+                      >
+                        <Text style={[styles.chipText, { color: opportunityReason === reason ? colors.tint : colors.textMuted }]}>{reason}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <View>
+                  <Text style={[styles.opportunityLabel, { color: colors.textSecondary }]}>BİTİŞ SÜRESİ</Text>
+                  <View style={styles.chipRow}>
+                    {[{ label: '24 SAAT', value: '24' }, { label: '48 SAAT', value: '48' }].map((opt) => (
+                      <Pressable
+                        key={opt.value}
+                        onPress={() => setOpportunityExpires(opt.value)}
+                        style={[styles.chip, { backgroundColor: opportunityExpires === opt.value ? colors.tint + '20' : colors.surface, borderColor: opportunityExpires === opt.value ? colors.tint : colors.surfaceBorder }]}
+                      >
+                        <Text style={[styles.chipText, { color: opportunityExpires === opt.value ? colors.tint : colors.textMuted }]}>{opt.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <Pressable style={({ pressed }) => [styles.publishBtn, { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder, borderWidth: 1 }, (isPublishing || !canAdd || isTrialExpired) && { opacity: 0.5 }, pressed && !isPublishing && { opacity: 0.85, transform: [{ scale: 0.98 }] }]} onPress={handlePublish} disabled={isPublishing}>
               {isPublishing ? (
                 <View style={styles.publishBtnInner}>
                   <ActivityIndicator size="small" color={colors.text} />
@@ -364,7 +442,16 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 48 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { fontSize: 13 },
+  skeletonContainer: { flex: 1 },
+  skeletonHero: { height: 280 },
+  skeletonDetailContent: { padding: 20, gap: 14 },
+  detailSkeletonLineLg: { width: '80%', height: 24, borderRadius: 12 },
+  detailSkeletonLineMd: { width: '52%', height: 16, borderRadius: 8 },
+  detailSkeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  detailSkeletonBox: { width: '47%', height: 70, borderRadius: 12 },
   heroContainer: { height: 280, position: 'relative', overflow: 'hidden', backgroundColor: '#333' },
+  heroImageSlide: { width: SCREEN_WIDTH, height: 280, backgroundColor: '#333' },
+  heroImage: { width: '100%', height: '100%' },
   noImage: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   noImageText: { fontSize: 13 },
   backBtn: { position: 'absolute', top: 52, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
@@ -375,7 +462,10 @@ const styles = StyleSheet.create({
   imageCounterText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   infoSection: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
   vehicleTitle: { fontSize: 24, fontWeight: '800', letterSpacing: -0.3, marginBottom: 4 },
-  vehicleSubtitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  vehicleMeta: { marginBottom: 8 },
+  vehicleMetaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  vehicleMetaLabel: { fontSize: 13, fontWeight: '700', width: 72 },
+  vehicleMetaValue: { fontSize: 13, fontWeight: '500' },
   vehicleSubText: { fontSize: 14, fontWeight: '500' },
   specsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 10, marginBottom: 20 },
   specItem: { width: '47%', borderRadius: 12, padding: 14 },
@@ -398,6 +488,14 @@ const styles = StyleSheet.create({
   blurredPriceContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   lockBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
   lockText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  toggleContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 16 },
+  toggleLabel: { fontSize: 14, fontWeight: '800' },
+  toggleSub: { fontSize: 11, fontWeight: '500' },
+  opportunityForm: { gap: 16, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.05)', marginBottom: 16 },
+  opportunityLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginBottom: 10 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1 },
+  chipText: { fontSize: 12, fontWeight: '700' },
   actionSection: { paddingHorizontal: 20, marginBottom: 20 },
   publishBtn: { borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
   publishBtnDisabled: { opacity: 0.6 },
@@ -405,3 +503,4 @@ const styles = StyleSheet.create({
   publishBtnText: { fontWeight: '800', fontSize: 14, letterSpacing: 1 },
 
 });
+

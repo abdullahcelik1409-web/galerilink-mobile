@@ -1,16 +1,19 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable, Dimensions, Modal, ActivityIndicator } from 'react-native';
+import Colors from '@/constants/Colors';
+import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
+import { getOptimizedImageUrl } from '@/lib/image-url';
+import { imageUploadService } from '@/features/listings/api/image-upload-service';
+import { listingRepository } from '@/features/listings/api/listing-repository';
+import { useMyListings } from '@/features/listings/hooks/use-listing-feeds';
+import { FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { FontAwesome } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/lib/auth-context';
-import Colors from '@/constants/Colors';
-import { useTheme } from '@/lib/theme-context';
-
-const { width } = Dimensions.get('window');
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, FlatList, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 type TabType = 'draft' | 'published';
+const PAGE_SIZE = 20;
+const LISTING_ROW_HEIGHT = 136;
 
 export default function ListingsScreen() {
   const router = useRouter();
@@ -18,72 +21,35 @@ export default function ListingsScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   
-  const [cars, setCars] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('draft');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const table = activeTab === 'draft' ? 'cars_drafts' : 'cars';
+  const {
+    items,
+    isRefreshing,
+    isLoading,
+    isMoreLoading,
+    refresh,
+    loadMore,
+    removeItem,
+  } = useMyListings(user?.id, table, PAGE_SIZE);
 
   // Delete State
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [carToDelete, setCarToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchMyCars = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('cars')
-        .select('*')
-        .eq('seller_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCars(data || []);
-    } catch (e: any) {
-      console.error('Fetch my cars error:', e.message);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchMyCars();
-  }, [user]);
-
-  const onRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    fetchMyCars();
-  }, [user]);
-
   const handleDeleteListing = async () => {
     if (!carToDelete) return;
     setIsDeleting(true);
     try {
-      // 1. Storage'dan fotoğrafları sil
       if (carToDelete.images && carToDelete.images.length > 0) {
-        const filePaths = carToDelete.images
-          .map((url: string) => {
-            const match = url.match(/car_images\/(.+)$/);
-            return match ? match[1] : null;
-          })
-          .filter(Boolean) as string[];
-
-        if (filePaths.length > 0) {
-          await supabase.storage.from('car_images').remove(filePaths);
-        }
+        await imageUploadService.removeCarImages(carToDelete.images);
       }
 
-      // 2. Veritabanından ilanı kalıcı olarak sil
-      const { error } = await supabase
-        .from('cars')
-        .delete()
-        .eq('id', carToDelete.id);
+      const targetTable = carToDelete.status === 'draft' ? 'cars_drafts' : 'cars';
+      await listingRepository.deleteListing(targetTable, carToDelete.id);
 
-      if (error) throw error;
-
-      // 3. UI'ı anında güncelle
-      setCars(currentCars => currentCars.filter(c => c.id !== carToDelete.id));
+      removeItem(item => item.id === carToDelete.id);
       setDeleteModalVisible(false);
       setCarToDelete(null);
     } catch (e: any) {
@@ -94,9 +60,7 @@ export default function ListingsScreen() {
     }
   };
 
-  const displayedCars = cars.filter(c => c.status === activeTab);
-
-  const renderCarItem = ({ item }: { item: any }) => {
+  const renderCarItem = useCallback(({ item }: { item: any }) => {
     const isDraft = item.status === 'draft';
     
     return (
@@ -111,7 +75,7 @@ export default function ListingsScreen() {
         <View style={[styles.imageContainer, { backgroundColor: colors.surfaceElevated }]}>
           {item.images && item.images.length > 0 ? (
             <Image 
-              source={{ uri: item.images[0] }} 
+              source={{ uri: getOptimizedImageUrl(item.thumbnail_url ?? item.images[0], { width: 240, height: 240 }) ?? item.images[0] }} 
               style={styles.carImage} 
               contentFit="cover" 
               transition={200}
@@ -171,7 +135,28 @@ export default function ListingsScreen() {
         </View>
       </Pressable>
     );
-  };
+  }, [colors, router, theme]);
+
+  const getItemLayout = useCallback((_: ArrayLike<any> | null | undefined, index: number) => ({
+    length: LISTING_ROW_HEIGHT,
+    offset: LISTING_ROW_HEIGHT * index,
+    index,
+  }), []);
+
+  const renderSkeletonList = useCallback(() => (
+    <View style={styles.skeletonList}>
+      {[0, 1, 2].map((item) => (
+        <View key={item} style={[styles.skeletonRow, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
+          <View style={[styles.skeletonImage, { backgroundColor: colors.surfaceElevated }]} />
+          <View style={styles.skeletonContent}>
+            <View style={[styles.skeletonLineLg, { backgroundColor: colors.surfaceElevated }]} />
+            <View style={[styles.skeletonLineSm, { backgroundColor: colors.surfaceElevated }]} />
+            <View style={[styles.skeletonLineMd, { backgroundColor: colors.surfaceElevated }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  ), [colors]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -200,23 +185,28 @@ export default function ListingsScreen() {
       </View>
 
       <FlatList
-        data={displayedCars}
+        data={items}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderCarItem}
+        getItemLayout={getItemLayout}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={isMoreLoading ? <ActivityIndicator size="small" color={colors.tint} style={styles.footerLoader} /> : null}
         maxToRenderPerBatch={5}
         windowSize={11}
-        removeClippedSubviews={false}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl 
             refreshing={isRefreshing} 
-            onRefresh={onRefresh} 
+            onRefresh={refresh} 
             tintColor={colors.tint}
           />
         }
         ListEmptyComponent={
-          !isLoading ? (
+          isLoading ? renderSkeletonList() : (
             <View style={styles.emptyState}>
               <View style={[styles.emptyIconContainer, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
                 <FontAwesome name="inbox" size={32} color={colors.textMuted} />
@@ -230,7 +220,7 @@ export default function ListingsScreen() {
                   : 'Fiyat belirleyip yayınladığınız araçlar burada listelenir.'}
               </Text>
             </View>
-          ) : null
+          )
         }
       />
 
@@ -378,6 +368,42 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
     paddingBottom: 40,
+  },
+  footerLoader: {
+    marginVertical: 16,
+  },
+  skeletonList: {
+    gap: 16,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    height: 120,
+  },
+  skeletonImage: {
+    width: 120,
+  },
+  skeletonContent: {
+    flex: 1,
+    padding: 14,
+    justifyContent: 'space-between',
+  },
+  skeletonLineLg: {
+    width: '70%',
+    height: 16,
+    borderRadius: 8,
+  },
+  skeletonLineMd: {
+    width: '55%',
+    height: 14,
+    borderRadius: 7,
+  },
+  skeletonLineSm: {
+    width: '40%',
+    height: 12,
+    borderRadius: 6,
   },
   carCard: {
     flexDirection: 'row',
@@ -580,3 +606,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   }
 });
+

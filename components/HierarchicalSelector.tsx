@@ -8,7 +8,6 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
@@ -24,8 +23,6 @@ import Colors from '@/constants/Colors';
 import { TaxonomyResolver } from '@/lib/taxonomy-resolver';
 import { TaxonomyLevel } from '@/lib/taxonomy-types';
 
-const { width } = Dimensions.get('window');
-
 const LEVELS = [
   { key: TaxonomyLevel.KATEGORI, title: 'Kategori' },
   { key: TaxonomyLevel.YIL, title: 'Yıl' },
@@ -38,6 +35,7 @@ const LEVELS = [
   { key: TaxonomyLevel.MOTOR, title: 'Motor' },
   { key: TaxonomyLevel.PAKET, title: 'Paket' },
 ];
+const TAXONOMY_ROW_HEIGHT = 74;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -151,6 +149,20 @@ export const HierarchicalSelector: React.FC<HierarchicalSelectorProps> = ({ onCo
     fetchItems(LEVELS[prevStepIndex].key as TaxonomyLevel, parentId);
   };
 
+  const keyExtractor = useCallback((item: any, index: number) => (
+    String(item.id ?? `${currentLevel.key}-${item.name}-${index}`)
+  ), [currentLevel.key]);
+
+  const renderTaxonomyItem = useCallback(({ item }: { item: any }) => (
+    <TaxonomyItemCard item={item} onSelect={handleSelect} />
+  ), [handleSelect]);
+
+  const getItemLayout = useCallback((_: ArrayLike<any> | null | undefined, index: number) => ({
+    length: TAXONOMY_ROW_HEIGHT,
+    offset: TAXONOMY_ROW_HEIGHT * index,
+    index,
+  }), []);
+
 
 
   const progress = (currentStepIndex + 1) / LEVELS.length;
@@ -201,8 +213,12 @@ export const HierarchicalSelector: React.FC<HierarchicalSelectorProps> = ({ onCo
           <FlatList
             style={{ flex: 1, width: '100%' }}
             data={items}
-            keyExtractor={(item) => item.id ? item.id.toString() : Math.random().toString()}
-            renderItem={({ item }) => <TaxonomyItemCard item={item} onSelect={handleSelect} />}
+            keyExtractor={keyExtractor}
+            renderItem={renderTaxonomyItem}
+            getItemLayout={getItemLayout}
+            initialNumToRender={12}
+            maxToRenderPerBatch={8}
+            updateCellsBatchingPeriod={50}
             contentContainerStyle={[styles.listContent, { flexGrow: 1, paddingBottom: 100 }]}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled={true}

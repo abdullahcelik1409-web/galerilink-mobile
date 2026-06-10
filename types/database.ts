@@ -18,9 +18,10 @@ export interface Profile {
   district: string | null;
   hesap_durumu: 'beklemede' | 'onaylandi' | 'reddedildi';
   status: 'pending_approval' | 'approved' | 'rejected';
-  subscription_status: 'trial' | 'active' | 'expired';
+  subscription_status: 'trial' | 'lite' | 'pro' | 'enterprise' | 'expired';
   trial_ends_at: string | null;
   max_sessions?: number;
+  expo_push_token?: string | null;
   created_at: string;
 }
 

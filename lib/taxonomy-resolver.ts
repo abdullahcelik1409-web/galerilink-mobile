@@ -1,5 +1,10 @@
 import { supabase } from './supabase';
 import { TaxonomyLevel } from './taxonomy-types';
+import { taxonomyCache } from '@/features/taxonomy/api/taxonomy-cache';
+
+const getCachedTaxonomy = async (key: string, loader: () => Promise<any[]>) => {
+  return taxonomyCache.get(key, loader);
+};
 
 /**
  * Türkçe karakter duyarlı normalizasyon fonksiyonu (Deduplication için)
@@ -38,7 +43,6 @@ export const TaxonomyResolver = {
    * Verilen seviye ve parent_id'ye göre taksonomi verilerini çeker.
    */
   async fetchItems(level: TaxonomyLevel, parentId: string | null = null) {
-    console.log(`[Resolver] FETCH START -> Level: ${level}, Parent: ${parentId}`);
     
     let query = supabase
       .from('car_taxonomy')
@@ -71,7 +75,6 @@ export const TaxonomyResolver = {
     });
 
     const finalData = Array.from(uniqueMap.values());
-    console.log(`[Resolver] FETCH END -> ${finalData.length} items found (Deduplicated) for ${level}`);
     return finalData;
   },
 
@@ -150,6 +153,7 @@ export const TaxonomyFilterResolver = {
    * Tüm onaylı markaları getirir.
    */
   async fetchMarkalar() {
+    return getCachedTaxonomy('filter:markalar', async () => {
     const { data, error } = await supabase
       .from('car_taxonomy')
       .select('id, name')
@@ -159,12 +163,14 @@ export const TaxonomyFilterResolver = {
     
     if (error) throw error;
     return this.deduplicate(data || []);
+    });
   },
 
   /**
    * Seçilen Markaya ait Serileri (Eski Model) getirir.
    */
   async fetchSeriler(markaName: string) {
+    return getCachedTaxonomy(`filter:seriler:${markaName}`, async () => {
     // 1. Marka İsmine sahip tüm ID'leri bul (Hiyerarşi bağımsız - Filtre için KRİTİK)
     const { data: markaNodes, error: markaErr } = await supabase
       .from('car_taxonomy')
@@ -187,6 +193,7 @@ export const TaxonomyFilterResolver = {
     
     if (error) throw error;
     return this.deduplicate(data || []);
+    });
   },
 
   /**
@@ -194,6 +201,7 @@ export const TaxonomyFilterResolver = {
    * Aradaki Yakıt, Kasa ve Şanzıman seviyelerini atlayarak Modellere ulaşır.
    */
   async fetchModeller(seriName: string, markaName: string) {
+    return getCachedTaxonomy(`filter:modeller:${markaName}:${seriName}`, async () => {
     // 1. Seri ID'lerini bul
     const { data: markaNodes } = await supabase.from('car_taxonomy').select('id').eq('level', TaxonomyLevel.MARKA).eq('name', markaName).eq('status', 'approved');
     const markaIds = (markaNodes || []).map(m => m.id);
@@ -221,6 +229,7 @@ export const TaxonomyFilterResolver = {
     
     if (error) throw error;
     return this.deduplicate(modeller || []);
+    });
   },
 
   /**
@@ -229,6 +238,7 @@ export const TaxonomyFilterResolver = {
    */
   async fetchMotorlar(modelName: string) {
     if (!modelName) return [];
+    return getCachedTaxonomy(`filter:motorlar:${modelName}`, async () => {
     
     // 1. İsimle Geniş Tarama: Seviyesi 'model' olan tüm ID'leri bul
     const { data: models } = await supabase.from('car_taxonomy').select('id').eq('level', TaxonomyLevel.MODEL).eq('name', modelName).eq('status', 'approved');
@@ -246,6 +256,7 @@ export const TaxonomyFilterResolver = {
     
     if (error) throw error;
     return this.deduplicate(data || []);
+    });
   },
 
   /**
@@ -254,6 +265,7 @@ export const TaxonomyFilterResolver = {
    */
   async fetchPaketler(motorName: string) {
     if (!motorName) return [];
+    return getCachedTaxonomy(`filter:paketler:${motorName}`, async () => {
 
     // 1. İsimle Geniş Tarama: Seviyesi 'motor' olan tüm ID'leri bul
     const { data: motors } = await supabase.from('car_taxonomy').select('id').eq('level', TaxonomyLevel.MOTOR).eq('name', motorName).eq('status', 'approved');
@@ -271,6 +283,7 @@ export const TaxonomyFilterResolver = {
     
     if (error) throw error;
     return this.deduplicate(data || []);
+    });
   },
 
   /**

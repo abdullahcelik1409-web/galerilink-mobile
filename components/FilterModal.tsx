@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -16,15 +16,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
-import { TaxonomyResolver, TaxonomyFilterResolver } from '@/lib/taxonomy-resolver';
+import { TaxonomyFilterResolver } from '@/lib/taxonomy-resolver';
 import { TaxonomyLevel } from '@/lib/taxonomy-types';
+import { taxonomyCache } from '@/features/taxonomy/api/taxonomy-cache';
 import { FilterState } from '@/hooks/use-filters';
-import { supabase } from '@/lib/supabase';
 import { TURKEY_CITIES } from '@/constants/TurkeyCities';
 import MultiSelectModal from './MultiSelectModal';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
-
 interface FilterModalProps {
   isVisible: boolean;
   onClose: () => void;
@@ -250,7 +249,7 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
               placeholder="Marka Seçiniz..."
               theme={theme}
               colors={colors}
-              onSelect={(item) => handleTaxonomySelect(TaxonomyLevel.MARKA, item)}
+              onSelect={(item: { id: string; name: string }) => handleTaxonomySelect(TaxonomyLevel.MARKA, item)}
               localFilters={localFilters}
             />
             <TaxonomyDropdown 
@@ -260,7 +259,7 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
               placeholder="Seri Seçiniz..."
               theme={theme}
               colors={colors}
-              onSelect={(item) => handleTaxonomySelect(TaxonomyLevel.SERI, item)}
+              onSelect={(item: { id: string; name: string }) => handleTaxonomySelect(TaxonomyLevel.SERI, item)}
               localFilters={localFilters}
             />
             <TaxonomyDropdown 
@@ -270,7 +269,7 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
               placeholder="Model Seçiniz..."
               theme={theme}
               colors={colors}
-              onSelect={(item) => handleTaxonomySelect(TaxonomyLevel.MODEL, item)}
+              onSelect={(item: { id: string; name: string }) => handleTaxonomySelect(TaxonomyLevel.MODEL, item)}
               localFilters={localFilters}
             />
             <TaxonomyDropdown 
@@ -280,7 +279,7 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
               placeholder="Motor Seçiniz..."
               theme={theme}
               colors={colors}
-              onSelect={(item) => handleTaxonomySelect(TaxonomyLevel.MOTOR, item)}
+              onSelect={(item: { id: string; name: string }) => handleTaxonomySelect(TaxonomyLevel.MOTOR, item)}
               localFilters={localFilters}
             />
             <TaxonomyDropdown 
@@ -290,7 +289,7 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
               placeholder="Paket Seçiniz..."
               theme={theme}
               colors={colors}
-              onSelect={(item) => handleTaxonomySelect(TaxonomyLevel.PAKET, item)}
+              onSelect={(item: { id: string; name: string }) => handleTaxonomySelect(TaxonomyLevel.PAKET, item)}
               localFilters={localFilters}
             />
           </View>
@@ -475,42 +474,81 @@ export default function FilterModal({ isVisible, onClose, onApply, currentFilter
   );
 }
 
+const TaxonomyDropdownRow = React.memo(({ item, isSelected, colors, onSelect }: any) => (
+  <TouchableOpacity style={styles.itemRow} onPress={() => onSelect(item)}>
+    <Text style={{ color: colors.text, fontSize: 16, fontWeight: isSelected ? '700' : '500' }}>
+      {item.name}
+    </Text>
+    {isSelected && <Ionicons name="checkmark" size={20} color={colors.text} />}
+  </TouchableOpacity>
+));
+
 const TaxonomyDropdown = ({ level, value, disabled, placeholder, theme, colors, onSelect, localFilters }: any) => {
   const [visible, setVisible] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
 
-  const fetchItems = async () => {
+  const cacheKey = useMemo(() => {
+    if (level === TaxonomyLevel.MARKA) return `${level}:all`;
+    if (level === TaxonomyLevel.SERI) return `${level}:${localFilters.selectedMarka?.name ?? ''}`;
+    if (level === TaxonomyLevel.MODEL) return `${level}:${localFilters.selectedMarka?.name ?? ''}:${localFilters.selectedSeri?.name ?? ''}`;
+    if (level === TaxonomyLevel.MOTOR) return `${level}:${localFilters.selectedModel?.name ?? ''}`;
+    if (level === TaxonomyLevel.PAKET) return `${level}:${localFilters.selectedMotor?.name ?? ''}`;
+    return `${level}:unknown`;
+  }, [level, localFilters.selectedMarka?.name, localFilters.selectedSeri?.name, localFilters.selectedModel?.name, localFilters.selectedMotor?.name]);
+
+  const fetchItems = useCallback(async () => {
     if (disabled) return;
-    setLoading(true);
     setVisible(true);
+    setLoading(true);
     try {
-      let uniqueData: any[] = [];
-      
-      if (level === TaxonomyLevel.MARKA) {
-        uniqueData = await TaxonomyFilterResolver.fetchMarkalar();
-      } else if (level === TaxonomyLevel.SERI) {
-        uniqueData = await TaxonomyFilterResolver.fetchSeriler(localFilters.selectedMarka!.name);
-      } else if (level === TaxonomyLevel.MODEL) {
-        uniqueData = await TaxonomyFilterResolver.fetchModeller(localFilters.selectedSeri!.name, localFilters.selectedMarka!.name);
-      } else if (level === TaxonomyLevel.MOTOR) {
-        uniqueData = await TaxonomyFilterResolver.fetchMotorlar(localFilters.selectedModel!.name);
-      } else if (level === TaxonomyLevel.PAKET) {
-        uniqueData = await TaxonomyFilterResolver.fetchPaketler(localFilters.selectedMotor!.name);
-      }
-      
+      const uniqueData = await taxonomyCache.get(cacheKey, async () => {
+        if (level === TaxonomyLevel.MARKA) {
+          return TaxonomyFilterResolver.fetchMarkalar();
+        }
+        if (level === TaxonomyLevel.SERI) {
+          return TaxonomyFilterResolver.fetchSeriler(localFilters.selectedMarka!.name);
+        }
+        if (level === TaxonomyLevel.MODEL) {
+          return TaxonomyFilterResolver.fetchModeller(localFilters.selectedSeri!.name, localFilters.selectedMarka!.name);
+        }
+        if (level === TaxonomyLevel.MOTOR) {
+          return TaxonomyFilterResolver.fetchMotorlar(localFilters.selectedModel!.name);
+        }
+        if (level === TaxonomyLevel.PAKET) {
+          return TaxonomyFilterResolver.fetchPaketler(localFilters.selectedMotor!.name);
+        }
+        return [];
+      });
       setItems(uniqueData);
     } catch (e) {
       console.error('[FilterModal] Taxonomy sync fetch error:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [cacheKey, disabled, level, localFilters.selectedMarka, localFilters.selectedSeri, localFilters.selectedModel, localFilters.selectedMotor]);
 
-  const filteredItems = search.trim()
-    ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
-    : items;
+  const filteredItems = useMemo(() => {
+    if (!deferredSearch.trim()) return items;
+    const normalizedSearch = deferredSearch.toLowerCase();
+    return items.filter(i => i.name.toLowerCase().includes(normalizedSearch));
+  }, [items, deferredSearch]);
+
+  const handleSelect = useCallback((item: any) => {
+    onSelect(item);
+    setVisible(false);
+  }, [onSelect]);
+
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <TaxonomyDropdownRow
+      item={item}
+      isSelected={value?.id === item.id}
+      colors={colors}
+      onSelect={handleSelect}
+    />
+  ), [colors, handleSelect, value?.id]);
 
   return (
     <View style={{ marginBottom: 12 }}>
@@ -566,20 +604,10 @@ const TaxonomyDropdown = ({ level, value, disabled, placeholder, theme, colors, 
                 data={filteredItems}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity 
-                    style={styles.itemRow}
-                    onPress={() => {
-                      onSelect(item);
-                      setVisible(false);
-                    }}
-                  >
-                    <Text style={{ color: value?.id === item.id ? colors.text : colors.text, fontSize: 16, fontWeight: value?.id === item.id ? '700' : '500' }}>
-                      {item.name}
-                    </Text>
-                    {value?.id === item.id && <Ionicons name="checkmark" size={20} color={colors.text} />}
-                  </TouchableOpacity>
-                )}
+                renderItem={renderItem}
+                initialNumToRender={12}
+                maxToRenderPerBatch={8}
+                updateCellsBatchingPeriod={50}
                 ListEmptyComponent={
                   <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                     <Text style={{ color: colors.textMuted }}>Sonuç bulunamadı.</Text>

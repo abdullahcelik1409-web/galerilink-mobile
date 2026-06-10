@@ -1,10 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, G, Circle } from 'react-native-svg';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 
-type ExpertiseState = 'changed' | 'painted' | 'local_painted' | 'original';
+type ExpertiseState = 'changed' | 'painted' | 'local_painted' | 'local' | 'original';
 
 interface ExpertiseData {
   [key: string]: ExpertiseState;
@@ -13,7 +13,7 @@ interface ExpertiseData {
 // Renk haritası (Kullanıcının Web Projesine Göre)
 const STATE_COLORS: Record<string, string> = {
   original: '#334155',         // Slate 700 (Koyu Gri) - Orijinal
-  local_painted: '#f97316',    // Orange 500 (Turuncu) - Lokal Boyalı
+  local_painted: '#fbbf24',    // Amber 400 (Daha sarı-turuncu) - Lokal Boyalı
   painted: '#3b82f6',          // Blue 500 (Mavi) - Boyalı
   changed: '#ef4444',          // Red 500 (Kırmızı) - Değişen
 };
@@ -92,7 +92,13 @@ export default function ExpertiseSchema({ expertise = {} }: { expertise?: Expert
 
   const getPartColor = (partId: string) => {
     const state = expertise[partId];
-    return state ? STATE_COLORS[state] : STATE_COLORS.original;
+    if (state === 'local' || state === 'local_painted') {
+      return STATE_COLORS.local_painted;
+    }
+    if (state === 'painted' || state === 'changed') {
+      return STATE_COLORS[state];
+    }
+    return theme === 'dark' ? STATE_COLORS.original : '#64748B';
   };
 
   const renderPath = (partId: string) => {

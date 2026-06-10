@@ -25,6 +25,7 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+scratch/
 
 # macOS
 .DS_Store
@@ -33,6 +34,10 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+galerilink-fcm-key.json
+google-services.json
+*-service-account*.json
+firebase-adminsdk-*.json
 
 # typescript
 *.tsbuildinfo

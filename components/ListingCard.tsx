@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Image } from 'expo-image';
-import { BlurView } from 'expo-blur';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
+import { getOptimizedImageUrl } from '@/lib/image-url';
 import { useTheme } from '@/lib/theme-context';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
+import React from 'react';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface ListingCardProps {
   car: any;
@@ -15,23 +16,37 @@ interface ListingCardProps {
 /**
  * ListingCard Component — Forensic Architect Design
  */
-export default function ListingCard({ car, onPress, isVerified = false }: ListingCardProps) {
+function ListingCard({ car, onPress, isVerified = false }: ListingCardProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const sellerProfile = car.profiles;
-  const galeriAdi = sellerProfile?.galeri_adi || sellerProfile?.company_name || sellerProfile?.ad_soyad || 'Bilinmeyen Satıcı';
   const sellerCity = sellerProfile?.city || car.location_city || '';
   const isSellerVerified = sellerProfile?.hesap_durumu === 'onaylandi';
-  const avatarInitial = galeriAdi.charAt(0).toUpperCase();
-  const hasImages = car.images && car.images.length > 0;
-  
+  const isOpportunity = car.is_opportunity === true;
+  const imageUrl = car.thumbnail_url ?? getOptimizedImageUrl(car.images?.[0], { width: 720, height: 440 });
+  const hasImages = !!imageUrl;
+
   return (
-    <Pressable style={[styles.card, { backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLowest : colors.surface }]} onPress={onPress}>
+    <Pressable 
+      style={[
+        styles.card, 
+        { 
+          backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLowest : colors.surface,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          elevation: 5,
+        },
+        isOpportunity && { borderColor: colors.success, borderWidth: 1 }
+      ]} 
+      onPress={onPress}
+    >
       {/* Hero Image Area */}
       <View style={[styles.imageWrapper, { backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLow : colors.surfaceElevated }]}>
         {hasImages ? (
           <Image 
-            source={{ uri: car.images[0] }} 
+            source={{ uri: imageUrl }} 
             style={styles.image} 
             contentFit="cover"
             transition={300}
@@ -45,50 +60,58 @@ export default function ListingCard({ car, onPress, isVerified = false }: Listin
         
         {/* Glassmorphism Status Badge */}
         <View style={styles.statusBadgeWrapper}>
-          <BlurView intensity={30} tint={theme === 'dark' ? 'dark' : 'light'} style={styles.statusBadge}>
-            <Text style={[styles.statusText, { color: theme === 'dark' ? '#FFFFFF' : '#000000' }]}>YAYINDA</Text>
+          <BlurView intensity={40} tint={theme === 'dark' ? 'dark' : 'light'} style={styles.statusBadge}>
+            <Text style={[styles.statusText, { color: theme === 'dark' ? '#FFFFFF' : '#000000' }]}>
+              {isOpportunity ? '🔥 FIRSAT' : 'YAYINDA'}
+            </Text>
           </BlurView>
         </View>
+
+        {isOpportunity && (
+          <View style={styles.vipBadge}>
+            <Ionicons name="diamond" size={12} color="#FFF" />
+            <Text style={styles.vipText}>PREMIUM SEÇİM</Text>
+          </View>
+        )}
       </View>
 
       {/* Content Area */}
       <View style={styles.content}>
         {/* Header Info */}
         <Text style={[styles.title, { color: theme === 'dark' ? colors.stitch.primary : colors.text }]} numberOfLines={1}>
-          {car.year} {car.brand} {car.series} {car.model}
+          {car.title}
         </Text>
 
         {/* Key Specs Matrix */}
         <View style={styles.specsMatrix}>
           <View style={[styles.specBox, { backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLow : colors.surfaceElevated }]}>
             <Text style={[styles.specLabel, { color: colors.textMuted }]}>KM</Text>
-            <Text style={[styles.specValue, { color: theme === 'dark' ? colors.stitch.primary : colors.text }]}>{car.km?.toLocaleString('tr-TR')}</Text>
+            <Text style={[styles.specValue, { color: colors.text }]}>{car.km?.toLocaleString('tr-TR')}</Text>
           </View>
           <View style={[styles.specBox, { backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLow : colors.surfaceElevated }]}>
             <Text style={[styles.specLabel, { color: colors.textMuted }]}>VİTES</Text>
-            <Text style={[styles.specValue, { color: theme === 'dark' ? colors.stitch.primary : colors.text }]}>{car.transmission || 'Otomatik'}</Text>
+            <Text style={[styles.specValue, { color: colors.text }]}>{car.transmission || 'Otomatik'}</Text>
           </View>
           <View style={[styles.specBox, { backgroundColor: theme === 'dark' ? colors.stitch.surfaceContainerLow : colors.surfaceElevated }]}>
             <Text style={[styles.specLabel, { color: colors.textMuted }]}>YAKIT</Text>
-            <Text style={[styles.specValue, { color: theme === 'dark' ? colors.stitch.primary : colors.text }]}>{car.fuel || 'Benzin'}</Text>
+            <Text style={[styles.specValue, { color: colors.text }]}>{car.fuel || 'Benzin'}</Text>
           </View>
         </View>
 
-        {/* Appraisal Highlights */}
-        <View style={[styles.appraisalChip, { backgroundColor: theme === 'dark' ? colors.stitch.primaryFixedDim : colors.tintLight }]}>
-          <FontAwesome name="check-circle" size={14} color={theme === 'dark' ? colors.stitch.primary : colors.tint} />
-          <Text style={[styles.appraisalText, { color: theme === 'dark' ? colors.stitch.primary : colors.tint }]}>Ekspertiz Raporu Mevcut</Text>
-        </View>
-
         {/* Pricing Block */}
-        <View style={[styles.pricingBlock, { borderTopColor: colors.surfaceBorder, position: 'relative', overflow: 'hidden' }]}>
+        <View style={[styles.pricingBlock, { borderTopColor: colors.surfaceBorder }]}>
           <View style={styles.priceContainer}>
              <Text style={[styles.priceLabel, { color: colors.textMuted }]}>B2B FİYAT</Text>
-             <Text style={[styles.priceValue, { color: theme === 'dark' ? colors.stitch.primary : colors.text }]}>
+             <Text style={[styles.priceValue, { color: isOpportunity ? colors.success : colors.text }]}>
                {isVerified ? car.price_b2b?.toLocaleString('tr-TR') : '?.???'} ₺
              </Text>
           </View>
           
+          <View style={styles.locationContainer}>
+            <Ionicons name="location-outline" size={14} color={colors.textMuted} />
+            <Text style={[styles.locationText, { color: colors.textMuted }]}>{sellerCity}</Text>
+          </View>
+
           {!isVerified && (
             <View style={StyleSheet.absoluteFill}>
               <BlurView intensity={90} tint={theme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
@@ -96,7 +119,7 @@ export default function ListingCard({ car, onPress, isVerified = false }: Listin
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.warning + '20', justifyContent: 'center', alignItems: 'center', marginLeft: 8 }}>
                   <FontAwesome name="lock" size={14} color={colors.warning} />
                 </View>
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginLeft: 10 }}>Fiyatı Görmek İçin Onaylayın</Text>
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginLeft: 10 }}>Onaylayın</Text>
               </View>
             </View>
           )}
@@ -106,14 +129,23 @@ export default function ListingCard({ car, onPress, isVerified = false }: Listin
   );
 }
 
+export default React.memo(ListingCard);
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 4,
+    width: SCREEN_WIDTH - 32, // Dinamik genişlik (cihaz genişliği - kenar boşlukları)
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 24,
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    alignSelf: 'center', // Kartı ekranda ortalar
   },
   imageWrapper: {
-    height: 200,
+    height: 220,
     position: 'relative',
   },
   image: {
@@ -127,124 +159,97 @@ const styles = StyleSheet.create({
   },
   statusBadgeWrapper: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    borderRadius: 9999,
+    top: 16,
+    right: 16,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   statusText: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  vipBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: '#059669',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  vipText: {
+    color: '#FFF',
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '900',
   },
   content: {
-    padding: 16,
+    padding: 20,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 12,
-    letterSpacing: -0.5,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 16,
+    letterSpacing: -0.3,
   },
   specsMatrix: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 20,
   },
   specBox: {
     flex: 1,
-    padding: 8,
-    borderRadius: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     alignItems: 'center',
   },
   specLabel: {
-    fontSize: 8,
-    fontWeight: '800',
-    marginBottom: 4,
+    fontSize: 9,
+    fontWeight: '900',
+    marginBottom: 6,
     letterSpacing: 0.5,
   },
   specValue: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  appraisalChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  appraisalText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '800',
   },
   pricingBlock: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     borderTopWidth: 1,
-    paddingTop: 12,
+    paddingTop: 20,
   },
   priceContainer: {
     flex: 1,
   },
   priceLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    marginBottom: 2,
+    fontSize: 10,
+    fontWeight: '900',
+    marginBottom: 4,
   },
   priceValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
+    letterSpacing: -0.5,
   },
-  lockedPriceRow: {
+  locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   locationText: {
-    fontSize: 10,
-    fontWeight: '700',
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  sellerBlock: {
-    alignItems: 'flex-end',
-  },
-  sellerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sellerAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sellerAvatarText: {
     fontSize: 12,
-    fontWeight: '800',
-  },
-  sellerInfo: {
-    alignItems: 'flex-end',
-  },
-  sellerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  galeriName: {
-    fontSize: 11,
     fontWeight: '700',
-    maxWidth: 100,
   },
 });

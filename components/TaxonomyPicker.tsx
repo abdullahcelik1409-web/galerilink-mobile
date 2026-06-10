@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -18,8 +17,6 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme-context';
 import Colors from '@/constants/Colors';
-
-const { width } = Dimensions.get('window');
 
 interface TaxonomyItem {
   id: string;
@@ -41,7 +38,7 @@ interface TaxonomyPickerProps {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const TaxonomyItemRow = ({ item, onSelect }: { item: TaxonomyItem; onSelect: (item: TaxonomyItem) => void }) => {
+const TaxonomyItemRow = React.memo(({ item, onSelect }: { item: TaxonomyItem; onSelect: (item: TaxonomyItem) => void }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const scale = useSharedValue(1);
@@ -75,7 +72,7 @@ const TaxonomyItemRow = ({ item, onSelect }: { item: TaxonomyItem; onSelect: (it
       </View>
     </AnimatedPressable>
   );
-};
+});
 
 export const TaxonomyPicker: React.FC<TaxonomyPickerProps> = ({
   items,
@@ -90,15 +87,20 @@ export const TaxonomyPicker: React.FC<TaxonomyPickerProps> = ({
   const { theme } = useTheme();
   const colors = Colors[theme];
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const filteredItems = useMemo(() => {
-    if (!searchQuery) return items;
+    if (!deferredSearchQuery) return items;
+    const normalizedQuery = deferredSearchQuery.toLowerCase();
     return items.filter((item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase())
+      item.name.toLowerCase().includes(normalizedQuery)
     );
-  }, [items, searchQuery]);
+  }, [items, deferredSearchQuery]);
 
   const progress = currentLevel / totalLevels;
+  const renderItem = useCallback(({ item }: { item: TaxonomyItem }) => (
+    <TaxonomyItemRow item={item} onSelect={onSelect} />
+  ), [onSelect]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -171,7 +173,10 @@ export const TaxonomyPicker: React.FC<TaxonomyPickerProps> = ({
         <FlatList
           data={filteredItems}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <TaxonomyItemRow item={item} onSelect={onSelect} />}
+          renderItem={renderItem}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={50}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

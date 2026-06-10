@@ -4,7 +4,7 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import 'react-native-reanimated';
 
@@ -13,6 +13,7 @@ import Colors from '@/constants/Colors';
 import { ThemeProvider as AppThemeProvider, useTheme } from '@/lib/theme-context';
 import { supabase } from '@/lib/supabase';
 import { SessionManager } from '@/lib/session-manager';
+import { useNotifications } from '@/hooks/use-notifications';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -57,13 +58,17 @@ export default function RootLayout() {
  * Auth durumuna göre yönlendirme yapan navigasyon bileşeni.
  */
 function RootLayoutNav() {
-  const { session, isLoading, user } = useAuth();
+  const { session, isLoading, user, isTrialExpired } = useAuth();
   const { theme } = useTheme();
   const segments = useSegments();
   const router = useRouter();
   const [isSessionAllowed, setIsSessionAllowed] = useState<boolean | null>(null);
 
-  const navigationTheme = {
+  // Push Notifications entegrasyonu (Kullanıcı ID ile dinler)
+  useNotifications(user?.id);
+
+
+  const navigationTheme = useMemo(() => ({
     dark: theme === 'dark',
     colors: {
       primary: Colors[theme].tint,
@@ -79,7 +84,7 @@ function RootLayoutNav() {
       bold: { fontFamily: 'System', fontWeight: 'bold' as const },
       heavy: { fontFamily: 'System', fontWeight: '900' as const },
     },
-  };
+  }), [theme]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -104,7 +109,7 @@ function RootLayoutNav() {
         
         try {
           const { isExceeded, isApproved } = await SessionManager.checkSessionLimit(user.id);
-          const { deviceId } = SessionManager.getDeviceInfo();
+          const deviceId = await SessionManager.getDeviceId();
           const { data: sessions } = await SessionManager.getActiveSessions(user.id);
           const isAlreadyRegistered = sessions?.some(s => s.device_id === deviceId);
 
@@ -131,6 +136,15 @@ function RootLayoutNav() {
 
     return () => subscription.unsubscribe();
   }, [session, isLoading, segments, user]);
+
+  // Route koruması: Süresi dolmuş kullanıcıları abonelik sayfasına yönlendir
+  useEffect(() => {
+    if (isLoading) return;
+    if (segments.includes('subscription' as never)) return;
+    if (user && isTrialExpired) {
+      router.replace('/subscription');
+    }
+  }, [user, isTrialExpired, isLoading, segments]);
 
   return (
     <ThemeProvider value={navigationTheme}>
@@ -168,6 +182,13 @@ function RootLayoutNav() {
           options={{
             presentation: 'modal',
             animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="messages/[id]"
+          options={{
+            headerShown: true,
+            animation: 'slide_from_right',
           }}
         />
       </Stack>

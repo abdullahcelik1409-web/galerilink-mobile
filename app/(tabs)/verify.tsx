@@ -12,6 +12,7 @@ import {
   FlatList,
   Platform,
   KeyboardAvoidingView,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -231,27 +232,33 @@ export default function VerificationScreen() {
   if (profileStatus === 'pending') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+        <View style={styles.headerMinimal}>
+          <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.surfaceElevated }]}>
+            <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>HESAP ONAYI</Text>
-          <View style={{ width: 44 }} />
         </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: colors.warning + '15', justifyContent: 'center', alignItems: 'center', marginBottom: 32 }}>
+        <View style={styles.statusContent}>
+          <View style={[styles.statusIconBox, { backgroundColor: colors.warning + '15' }]}>
             <Ionicons name="time" size={48} color={colors.warning} />
           </View>
-          <Text style={{ fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 16, textAlign: 'center', letterSpacing: -0.5 }}>İnceleniyor</Text>
-          <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, fontWeight: '500' }}>
-            Bilgileriniz başarıyla alındı ve ekibimiz tarafından inceleniyor. İşlem tamamlandığında size bildirim göndereceğiz.
+          <Text style={[styles.statusTitle, { color: colors.text }]}>İnceleniyor</Text>
+          <Text style={[styles.statusDesc, { color: colors.textSecondary }]}>
+            Belgeleriniz başarıyla yüklendi. Ekibimiz şu an inceleme yapıyor. Genellikle 24 saat içinde sonuçlandırıyoruz.
           </Text>
-          <Pressable 
-            style={[styles.submitBtn, { backgroundColor: colors.surfaceElevated, marginTop: 40, width: '100%', borderWidth: 1, borderColor: colors.surfaceBorder }]}
+          
+          <View style={styles.progressFull}>
+             <View style={[styles.progressTrack, { backgroundColor: theme === 'dark' ? '#27272A' : '#E2E8F0' }]}>
+                <View style={[styles.progressBar, { backgroundColor: colors.warning, width: '65%' }]} />
+             </View>
+             <Text style={[styles.progressLabel, { color: colors.warning }]}>%65 TAMAMLANDI</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: colors.text, marginTop: 40 }]}
             onPress={() => router.back()}
           >
-            <Text style={[styles.submitBtnText, { color: colors.text }]}>GERİ DÖN</Text>
-          </Pressable>
+            <Text style={[styles.primaryBtnText, { color: colors.background }]}>ANLAŞILDI</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -260,27 +267,26 @@ export default function VerificationScreen() {
   if (profileStatus === 'approved') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
+        <View style={styles.headerMinimal}>
+          <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.surfaceElevated }]}>
+            <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>HESAP ONAYI</Text>
-          <View style={{ width: 44 }} />
         </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: colors.success + '15', justifyContent: 'center', alignItems: 'center', marginBottom: 32 }}>
+        <View style={styles.statusContent}>
+          <View style={[styles.statusIconBox, { backgroundColor: colors.success + '15' }]}>
             <Ionicons name="shield-checkmark" size={48} color={colors.success} />
           </View>
-          <Text style={{ fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 16, textAlign: 'center', letterSpacing: -0.5 }}>Hesabınız Onaylı</Text>
-          <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, fontWeight: '500' }}>
-            Galerilink B2B ağına tam erişim hakkına sahipsiniz. Tekrar form doldurmanıza gerek yoktur.
+          <Text style={[styles.statusTitle, { color: colors.text }]}>Hesabınız Onaylı</Text>
+          <Text style={[styles.statusDesc, { color: colors.textSecondary }]}>
+            Galerilink B2B ağına tam erişim hakkına sahipsiniz. Tüm ilan detaylarını ve özel fiyatları görebilirsiniz.
           </Text>
-          <Pressable 
-            style={[styles.submitBtn, { backgroundColor: colors.surfaceElevated, marginTop: 40, width: '100%', borderWidth: 1, borderColor: colors.surfaceBorder }]}
+
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: colors.success, marginTop: 40 }]}
             onPress={() => router.back()}
           >
-            <Text style={[styles.submitBtnText, { color: colors.text }]}>GERİ DÖN</Text>
-          </Pressable>
+            <Text style={[styles.primaryBtnText, { color: '#FFFFFF' }]}>DEVAM ET</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -290,11 +296,11 @@ export default function VerificationScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: colors.surfaceElevated }]}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>HESAP ONAYI</Text>
-        <View style={{ width: 40 }} />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>HESAP DOĞRULAMA</Text>
+        <View style={{ width: 44 }} />
       </View>
 
       <KeyboardAvoidingView 
@@ -302,111 +308,123 @@ export default function VerificationScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView 
-          contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]} 
+          contentContainerStyle={styles.scrollContent} 
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.infoBox, { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder, borderWidth: 1 }]}>
-            <Ionicons name="shield-checkmark" size={28} color={colors.text} />
-            <Text style={[styles.infoText, { color: colors.text }]}>
-              Galerilink B2B ağına tam erişim sağlamak için kurumsal bilgilerinizi doğrulamanız gerekmektedir.
-            </Text>
-          </View>
-
-          {/* Form Group: Yetki Belgesi */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textMuted }]}>YETKİ BELGESİ NUMARASI</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder, color: colors.text }]}
-              placeholder="Örn: 3400001"
-              placeholderTextColor={colors.textMuted}
-              value={form.yetkiBelgeNo}
-              onChangeText={(t) => setForm(f => ({ ...f, yetkiBelgeNo: t }))}
-              keyboardType="numeric"
-            />
-          </View>
-
-          {/* Form Group: Location */}
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={[styles.label, { color: colors.textMuted }]}>{'İL'}</Text>
-              <Pressable 
-                style={[styles.input, styles.pickerTrigger, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}
-                onPress={() => setPickerModal({ visible: true, type: 'city' })}
-              >
-                <Text style={[styles.pickerValue, { color: form.selectedCity ? colors.text : colors.textMuted }]}>
-                  {form.selectedCity || 'Seçiniz'}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-              </Pressable>
+          <View style={[styles.heroInfo, { backgroundColor: theme === 'dark' ? '#18181B' : '#F8FAFC', borderColor: colors.surfaceBorder }]}>
+            <View style={[styles.infoIconBox, { backgroundColor: colors.tint + '15' }]}>
+              <Ionicons name="document-text" size={24} color={colors.tint} />
             </View>
-
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={[styles.label, { color: colors.textMuted }]}>İLÇE</Text>
-              <Pressable 
-                style={[styles.input, styles.pickerTrigger, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder, opacity: form.selectedCity ? 1 : 0.5 }]}
-                onPress={() => form.selectedCity && setPickerModal({ visible: true, type: 'district' })}
-              >
-                <Text style={[styles.pickerValue, { color: form.selectedDistrict ? colors.text : colors.textMuted }]}>
-                  {form.selectedDistrict || 'Seçiniz'}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-              </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.infoTitle, { color: colors.text }]}>Kurumsal Doğrulama</Text>
+              <Text style={[styles.infoSub, { color: colors.textSecondary }]}>
+                B2B ağına erişmek için lütfen aşağıdaki kurumsal bilgileri doldurun.
+              </Text>
             </View>
           </View>
 
-          {/* Form Group: Document Upload */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textMuted }]}>VERGİ LEVHASI (PDF/JPG)</Text>
-            <Pressable 
-              style={[styles.uploadBox, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder, borderStyle: 'dashed' }]}
-              onPress={handleDocumentPick}
-            >
-              {form.documentName ? (
-                <View style={styles.fileInfo}>
-                  <Ionicons name="document-attach" size={32} color={colors.success} />
-                  <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{form.documentName}</Text>
-                  <Text style={[styles.fileStatus, { color: colors.success }]}>Dosya Seçildi</Text>
-                </View>
-              ) : (
-                <View style={styles.uploadPlaceholder}>
-                  <Ionicons name="cloud-upload-outline" size={32} color={colors.textMuted} />
-                  <Text style={[styles.uploadText, { color: colors.textSecondary }]}>Dosya Seçmek İçin Tıklayın</Text>
-                  <Text style={[styles.uploadHint, { color: colors.textMuted }]}>PDF veya Resim dosyası</Text>
-                </View>
-              )}
-            </Pressable>
+          {/* Form Groups */}
+          <View style={styles.formSection}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>YETKİ BELGESİ NUMARASI</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: theme === 'dark' ? '#18181B' : '#F4F4F5', borderColor: colors.surfaceBorder }]}>
+                <TextInput
+                  style={[styles.input, { color: colors.text }]}
+                  placeholder="Örn: 3400001"
+                  placeholderTextColor={colors.textMuted}
+                  value={form.yetkiBelgeNo}
+                  onChangeText={(t) => setForm(f => ({ ...f, yetkiBelgeNo: t }))}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={[styles.label, { color: colors.textMuted }]}>İL</Text>
+                <TouchableOpacity 
+                  style={[styles.inputWrapper, { backgroundColor: theme === 'dark' ? '#18181B' : '#F4F4F5', borderColor: colors.surfaceBorder }]}
+                  onPress={() => setPickerModal({ visible: true, type: 'city' })}
+                >
+                  <Text style={[styles.pickerText, { color: form.selectedCity ? colors.text : colors.textMuted }]}>
+                    {form.selectedCity || 'Seçiniz'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={[styles.label, { color: colors.textMuted }]}>İLÇE</Text>
+                <TouchableOpacity 
+                  style={[styles.inputWrapper, { backgroundColor: theme === 'dark' ? '#18181B' : '#F4F4F5', borderColor: colors.surfaceBorder, opacity: form.selectedCity ? 1 : 0.5 }]}
+                  onPress={() => form.selectedCity && setPickerModal({ visible: true, type: 'district' })}
+                >
+                  <Text style={[styles.pickerText, { color: form.selectedDistrict ? colors.text : colors.textMuted }]}>
+                    {form.selectedDistrict || 'Seçiniz'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.textMuted }]}>VERGİ LEVHASI</Text>
+              <TouchableOpacity 
+                style={[styles.uploadBox, { backgroundColor: theme === 'dark' ? '#18181B' : '#F4F4F5', borderColor: colors.surfaceBorder }]}
+                onPress={handleDocumentPick}
+              >
+                {form.documentName ? (
+                  <View style={styles.uploadResult}>
+                    <View style={[styles.fileIconBox, { backgroundColor: colors.success + '15' }]}>
+                      <Ionicons name="document-attach" size={28} color={colors.success} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>{form.documentName}</Text>
+                      <Text style={[styles.fileStatus, { color: colors.success }]}>Belge yüklendi</Text>
+                    </View>
+                    <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+                  </View>
+                ) : (
+                  <View style={styles.uploadPlaceholder}>
+                    <Ionicons name="cloud-upload-outline" size={32} color={colors.textMuted} />
+                    <Text style={[styles.uploadTitle, { color: colors.text }]}>Dosya Seçin</Text>
+                    <Text style={[styles.uploadSub, { color: colors.textSecondary }]}>PDF veya WebP/JPG formatında</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Submit Button */}
-          <Pressable 
-            style={({ pressed }) => [
-              styles.submitBtn,
-              { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorder, borderWidth: 1 },
-              (loading || pressed) && { opacity: 0.8 }
-            ]}
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: colors.text, opacity: loading ? 0.7 : 1 }]}
             onPress={handleSubmit}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={colors.text} />
+              <ActivityIndicator color={colors.background} />
             ) : (
-              <Text style={[styles.submitBtnText, { color: colors.text }]}>BAŞVURUYU TAMAMLA</Text>
+              <Text style={[styles.primaryBtnText, { color: colors.background }]}>BAŞVURUYU GÖNDER</Text>
             )}
-          </Pressable>
+          </TouchableOpacity>
+          
+          <Text style={[styles.footerHint, { color: colors.textMuted }]}>
+            Verileriniz KVKK kapsamında korunmakta ve sadece doğrulama için kullanılmaktadır.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Picker Modal */}
       <Modal visible={pickerModal.visible} animationType="slide" transparent={true}>
-        <View style={[styles.modalOverlay, { backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(247, 250, 252, 0.8)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
                 {pickerModal.type === 'city' ? 'İL SEÇİNİZ' : 'İLÇE SEÇİNİZ'}
               </Text>
-              <Pressable onPress={() => setPickerModal({ ...pickerModal, visible: false })}>
-                <Ionicons name="close" size={24} color={colors.text} />
+              <Pressable onPress={() => setPickerModal({ ...pickerModal, visible: false })} style={[styles.closeBtn, { backgroundColor: colors.surfaceElevated }]}>
+                <Ionicons name="close" size={20} color={colors.text} />
               </Pressable>
             </View>
             <FlatList
@@ -427,47 +445,66 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    height: 110,
     paddingTop: 60,
+    height: 115,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     borderBottomWidth: 1,
   },
+  headerMinimal: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(150,150,150,0.1)',
   },
   headerTitle: {
     fontSize: 14,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
   scrollContent: {
-    padding: 24,
+    padding: 20,
     paddingBottom: 60,
   },
-  infoBox: {
+  heroInfo: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
     padding: 20,
     borderRadius: 24,
+    borderWidth: 1,
+    gap: 16,
     marginBottom: 32,
-    alignItems: 'center',
   },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '500',
+  infoIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  infoSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  formSection: {
+    marginBottom: 32,
   },
   inputGroup: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   row: {
     flexDirection: 'row',
@@ -476,87 +513,152 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.5,
-    marginBottom: 10,
-    paddingLeft: 6,
-    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+    paddingLeft: 4,
   },
-  input: {
-    height: 64,
-    borderWidth: 2,
+  inputWrapper: {
+    height: 60,
+    borderWidth: 1,
     borderRadius: 16,
-    paddingHorizontal: 20,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  pickerTrigger: {
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  pickerValue: {
+  input: {
+    flex: 1,
+    height: '100%',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pickerText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   uploadBox: {
-    height: 160,
-    borderRadius: 24,
-    borderWidth: 2,
+    height: 120,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
   uploadPlaceholder: {
     alignItems: 'center',
-    gap: 12,
   },
-  uploadText: {
+  uploadTitle: {
     fontSize: 15,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    marginTop: 8,
   },
-  uploadHint: {
+  uploadSub: {
     fontSize: 12,
     fontWeight: '600',
+    marginTop: 2,
   },
-  fileInfo: {
+  uploadResult: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 12,
+  },
+  fileIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fileName: {
     fontSize: 14,
     fontWeight: '800',
-    width: 220,
-    textAlign: 'center',
   },
   fileStatus: {
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '700',
     textTransform: 'uppercase',
+    marginTop: 2,
   },
-  submitBtn: {
+  primaryBtn: {
     height: 64,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  submitBtnText: {
-    fontSize: 15,
+  primaryBtnText: {
+    fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
-  // Modal Styles
+  footerHint: {
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 24,
+    lineHeight: 16,
+    paddingHorizontal: 20,
+  },
+  // Status Pages
+  statusContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  statusIconBox: {
+    width: 100,
+    height: 100,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  statusTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -1,
+    marginBottom: 12,
+  },
+  statusDesc: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  progressFull: {
+    width: '100%',
+    marginTop: 40,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 8,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  // Modal
   modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    height: '75%',
+    height: '80%',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     padding: 24,
@@ -565,29 +667,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(150,150,150,0.1)',
+    marginBottom: 20,
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pickerList: {
     paddingBottom: 40,
   },
   pickerItem: {
-    paddingVertical: 20,
-    borderBottomWidth: 1,
+    paddingVertical: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   pickerItemText: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/database';
+
+const NOTIFICATION_PREFS_KEY = 'galerilink_notification_preferences';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -32,6 +35,7 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [notifsEnabled, setNotifsEnabled] = useState(true);
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false);
+  const prefsHydratedRef = useRef(false);
   
   // Password States
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
@@ -46,7 +50,30 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     fetchProfile();
+    loadNotificationPreferences();
   }, []);
+
+  useEffect(() => {
+    if (!prefsHydratedRef.current) return;
+    AsyncStorage.setItem(
+      NOTIFICATION_PREFS_KEY,
+      JSON.stringify({ notifsEnabled, priceAlertsEnabled })
+    ).catch(() => {});
+  }, [notifsEnabled, priceAlertsEnabled]);
+
+  const loadNotificationPreferences = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(NOTIFICATION_PREFS_KEY);
+      if (!raw) return;
+      const prefs = JSON.parse(raw);
+      setNotifsEnabled(Boolean(prefs.notifsEnabled));
+      setPriceAlertsEnabled(Boolean(prefs.priceAlertsEnabled));
+    } catch {
+      // Tercihler okunamazsa varsayilanlar kullanilir.
+    } finally {
+      prefsHydratedRef.current = true;
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -192,57 +219,97 @@ export default function SettingsScreen() {
         {/* Security & Sessions */}
         <View style={styles.section}>
           {renderSectionHeader('GÜVENLİK VE OTURUMLAR')}
-          <View style={[styles.premiumCard, { backgroundColor: colors.surface }]}>
-            {/* Machined Selector Section */}
-            <View style={styles.machinedRow}>
-              <View style={styles.menuItemText}>
-                <Text style={[styles.technicalTitle, { color: colors.text }]}>MAKSİMUM OTURUM</Text>
-                <Text style={[styles.menuItemSub, { color: colors.textMuted }]}>Eşzamanlı aktif cihaz sınırı</Text>
+          {profile?.subscription_status === 'enterprise' ? (
+            <View style={[styles.premiumCard, { backgroundColor: colors.surface }]}>
+              {/* Machined Selector Section */}
+              <View style={styles.machinedRow}>
+                <View style={styles.menuItemText}>
+                  <Text style={[styles.technicalTitle, { color: colors.text }]}>MAKSİMUM OTURUM</Text>
+                  <Text style={[styles.menuItemSub, { color: colors.textMuted }]}>Eşzamanlı aktif cihaz sınırı</Text>
+                </View>
+                <View style={[styles.machinedSelector, { backgroundColor: colors.surfaceElevated }]}>
+                  {[1, 2, 3].map((num) => {
+                    const isActive = profile?.max_sessions === num;
+                    return (
+                      <Pressable 
+                        key={num}
+                        onPress={async () => {
+                          try {
+                            const { error } = await supabase.from('profiles').update({ max_sessions: num }).eq('id', user?.id);
+                            if (error) throw error;
+                            fetchProfile();
+                          } catch (error) {
+                            Alert.alert('Hata', 'Oturum limiti guncellenemedi.');
+                          }
+                        }}
+                        style={[
+                          styles.machinedOption, 
+                          isActive && { backgroundColor: colors.background, borderColor: colors.success, borderWidth: 1.5 }
+                        ]}
+                      >
+                        <Text style={[
+                          styles.machinedOptionText, 
+                          { color: isActive ? colors.success : colors.textMuted }
+                        ]}>
+                          0{num}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-              <View style={[styles.machinedSelector, { backgroundColor: colors.surfaceElevated }]}>
-                {[1, 2, 3].map((num) => {
-                  const isActive = profile?.max_sessions === num;
-                  return (
-                    <Pressable 
-                      key={num}
-                      onPress={async () => {
-                        const { error } = await supabase.from('profiles').update({ max_sessions: num }).eq('id', user?.id);
-                        if (!error) fetchProfile();
-                      }}
-                      style={[
-                        styles.machinedOption, 
-                        isActive && { backgroundColor: colors.background, borderColor: colors.success, borderWidth: 1.5 }
-                      ]}
-                    >
-                      <Text style={[
-                        styles.machinedOptionText, 
-                        { color: isActive ? colors.success : colors.textMuted }
-                      ]}>
-                        0{num}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+
+              {/* Active Devices Tonal Card */}
+              <Pressable 
+                style={[styles.tonalItem, { backgroundColor: colors.surfaceElevated }]} 
+                onPress={() => router.push('/sessions')}
+              >
+                <View style={styles.tonalItemContent}>
+                  <View style={[styles.tonalIcon, { backgroundColor: colors.tintLight }]}>
+                    <Ionicons name="phone-portrait-outline" size={18} color={colors.text} />
+                  </View>
+                  <View style={styles.menuItemText}>
+                    <Text style={[styles.technicalTitle, { color: colors.text }]}>AKTİF CİHAZLAR</Text>
+                    <Text style={[styles.menuItemSub, { color: colors.textMuted }]}>Oturum açılmış cihazların listesi</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </View>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={[styles.premiumCard, { backgroundColor: colors.surface }]}>
+              <View style={{ padding: 24, alignItems: 'center', gap: 16 }}>
+                <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.warning + '15', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="lock-closed" size={28} color={colors.warning} />
+                </View>
+                <View style={{ alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.technicalTitle, { color: colors.text, fontSize: 14, textAlign: 'center' }]}>KURUMSAL PAKETE ÖZEL</Text>
+                  <Text style={[styles.menuItemSub, { color: colors.textMuted, textAlign: 'center', lineHeight: 18 }]}>
+                    Çoklu cihaz oturum yönetimi ve aktif cihaz kontrolü sadece Kurumsal paket abonelerine özeldir.
+                  </Text>
+                </View>
+                <Pressable 
+                  style={({ pressed }) => [{ 
+                    width: '100%', 
+                    height: 48, 
+                    borderRadius: 12, 
+                    backgroundColor: colors.surfaceElevated, 
+                    borderColor: colors.surfaceBorder, 
+                    borderWidth: 1,
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    gap: 8,
+                    opacity: pressed ? 0.7 : 1,
+                  }]}
+                  onPress={() => router.push('/subscription')}
+                >
+                  <Ionicons name="diamond-outline" size={16} color={colors.text} />
+                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800', letterSpacing: 1 }}>PAKETİ YÜKSELT</Text>
+                </Pressable>
               </View>
             </View>
-
-            {/* Active Devices Tonal Card */}
-            <Pressable 
-              style={[styles.tonalItem, { backgroundColor: colors.surfaceElevated }]} 
-              onPress={() => router.push('/sessions')}
-            >
-              <View style={styles.tonalItemContent}>
-                <View style={[styles.tonalIcon, { backgroundColor: colors.tintLight }]}>
-                  <Ionicons name="phone-portrait-outline" size={18} color={colors.text} />
-                </View>
-                <View style={styles.menuItemText}>
-                  <Text style={[styles.technicalTitle, { color: colors.text }]}>AKTİF CİHAZLAR</Text>
-                  <Text style={[styles.menuItemSub, { color: colors.textMuted }]}>Oturum açılmış cihazların listesi</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </View>
-            </Pressable>
-          </View>
+          )}
         </View>
 
         {/* Notifications */}

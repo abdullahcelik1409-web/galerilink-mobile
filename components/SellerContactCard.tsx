@@ -28,13 +28,6 @@ export default function SellerContactCard({ profile, colors, theme, containerSty
   const avatarInitial = galeriAdi.charAt(0).toUpperCase();
   const locationText = [city, district].filter(Boolean).join(', ') || 'Konum Bilinmiyor';
 
-  const handleWhatsApp = () => {
-    if (!phone) return;
-    const cleaned = phone.replace(/\D/g, '');
-    const whatsappNumber = cleaned.startsWith('0') ? '90' + cleaned.slice(1) : cleaned;
-    Linking.openURL(`whatsapp://send?phone=${whatsappNumber}`);
-  };
-
   const handleCall = () => {
     if (!phone) return;
     Linking.openURL(`tel:${phone}`);
@@ -72,15 +65,9 @@ export default function SellerContactCard({ profile, colors, theme, containerSty
       </View>
 
       {/* Action Buttons */}
-      {phone ? (
-        <View style={styles.sellerCardActions}>
-          <Pressable
-            style={({ pressed }) => [styles.sellerActionBtn, styles.whatsappBtn, pressed && { opacity: 0.85 }]}
-            onPress={handleWhatsApp}
-          >
-            <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
-            <Text style={styles.sellerActionBtnText}>WHATSAPP</Text>
-          </Pressable>
+      <View style={styles.sellerCardActions}>
+        {/* Arama Yap Button */}
+        {phone ? (
           <Pressable
             style={({ pressed }) => [
               styles.sellerActionBtn,
@@ -92,8 +79,8 @@ export default function SellerContactCard({ profile, colors, theme, containerSty
             <Ionicons name="call-outline" size={18} color={colors.text} />
             <Text style={[styles.sellerActionBtnText, { color: colors.text }]}>ARAMA YAP</Text>
           </Pressable>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -178,13 +165,9 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 8,
   },
-  whatsappBtn: {
-    backgroundColor: '#10B981',
-  },
   sellerActionBtnText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
 });

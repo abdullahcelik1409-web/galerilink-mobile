@@ -1,8 +1,43 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from './supabase';
+import { isAllowedScrapedImageUrl } from './security';
 
 import { decode } from 'base64-arraybuffer';
+
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 15000;
+
+async function downloadImageWithTimeout(imageUrl: string, downloadDest: string) {
+  const download = FileSystem.createDownloadResumable(imageUrl, downloadDest);
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const result = await Promise.race([
+      download.downloadAsync(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('Image download timeout')),
+          IMAGE_DOWNLOAD_TIMEOUT_MS
+        );
+      }),
+    ]);
+
+    if (!result?.uri) {
+      throw new Error('Image download failed');
+    }
+
+    return result.uri;
+  } catch (error) {
+    try {
+      await download.pauseAsync();
+    } catch {
+      // no-op
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 /**
  * Resmi dış kaynaktan (Sahibinden) indirip, WebP formatında küçülterek
@@ -14,11 +49,15 @@ import { decode } from 'base64-arraybuffer';
  */
 export async function processAndUploadImage(imageUrl: string, carId: string): Promise<string | null> {
   try {
+    if (!isAllowedScrapedImageUrl(imageUrl)) {
+      return null;
+    }
+
     // 1. Dosyayı geçici olarak indir
     const fileName = imageUrl.split('/').pop() || 'temp.jpg';
     const downloadDest = FileSystem.cacheDirectory + fileName;
     
-    const { uri: localUri } = await FileSystem.downloadAsync(imageUrl, downloadDest);
+    const localUri = await downloadImageWithTimeout(imageUrl, downloadDest);
 
     // 2. Resmi Manipüle et (WebP, %80 kalite, opsiyonel boyut küçültme)
     const manipResult = await ImageManipulator.manipulateAsync(
@@ -48,7 +87,7 @@ export async function processAndUploadImage(imageUrl: string, carId: string): Pr
       });
 
     if (uploadError) {
-      console.error('Upload Error:', uploadError.message);
+      console.warn('[ImageProcessor] Upload failed.');
       return null;
     }
 
@@ -58,8 +97,8 @@ export async function processAndUploadImage(imageUrl: string, carId: string): Pr
       .getPublicUrl(storagePath);
 
     return publicData.publicUrl;
-  } catch (error) {
-    console.error('Image Processing Error:', error);
+  } catch {
+    console.warn('[ImageProcessor] Image processing failed.');
     return null;
   }
 }
@@ -69,17 +108,19 @@ export async function processAndUploadImage(imageUrl: string, carId: string): Pr
  * Hatalı resimleri pas geçer.
  */
 export async function processMultipleImages(imageUrls: string[], carId: string): Promise<string[]> {
-  const uploadedUrls: string[] = [];
-  
-  // Çok fazla eşzamanlı istek atmamak için batching yapılabilir,
-  // ancak basitlik adına Promise.all kullanıyoruz (veya for...of ile sıralı).
-  // Mobil ağlarda çökme olmaması için sıralı yapmak daha güvenlidir.
-  for (const url of imageUrls) {
-    const publicUrl = await processAndUploadImage(url, carId);
-    if (publicUrl) {
-      uploadedUrls.push(publicUrl);
-    }
+  const chunkSize = 10;
+  const allResults = [];
+  for (let i = 0; i < imageUrls.length; i += chunkSize) {
+    const chunk = imageUrls.slice(i, i + chunkSize);
+    const chunkResults = await Promise.allSettled(
+      chunk.map(url => processAndUploadImage(url, carId))
+    );
+    allResults.push(...chunkResults);
   }
-
-  return uploadedUrls;
+ 
+  const successful = allResults
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value)
+    .filter((url): url is string => typeof url === 'string' && url.length > 0);
+  return successful;
 }

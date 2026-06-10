@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/Colors';
+import { getOptimizedImageUrl } from '@/lib/image-url';
 import { useTheme } from '@/lib/theme-context';
 import SellerContactCard from './SellerContactCard';
 
@@ -12,11 +13,12 @@ interface OpportunityCardProps {
   onPress: () => void;
 }
 
-export default function OpportunityCard({ car, onPress }: OpportunityCardProps) {
+function OpportunityCard({ car, onPress }: OpportunityCardProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const galeriAdi = car.seller_company_name || 'Bilinmiyor';
-  const hasImages = car.images && car.images.length > 0;
+  const imageUrl = car.thumbnail_url ?? getOptimizedImageUrl(car.images?.[0], { width: 720, height: 360 });
+  const hasImages = !!imageUrl;
   
   // Calculate expiry
   const isExpiringSoon = car.opportunity_expires_at 
@@ -42,7 +44,7 @@ export default function OpportunityCard({ car, onPress }: OpportunityCardProps) 
       <View style={[styles.imageWrapper, { backgroundColor: theme === 'dark' ? '#064E3B' : '#A7F3D0' }]}>
         {hasImages ? (
           <Image 
-            source={{ uri: car.images[0] }} 
+            source={{ uri: imageUrl }} 
             style={styles.image} 
             contentFit="cover"
             transition={300}
@@ -113,6 +115,8 @@ export default function OpportunityCard({ car, onPress }: OpportunityCardProps) 
     </Pressable>
   );
 }
+
+export default React.memo(OpportunityCard);
 
 const styles = StyleSheet.create({
   card: {

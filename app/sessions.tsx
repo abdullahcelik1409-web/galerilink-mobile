@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { SessionManager } from '@/lib/session-manager';
 
+const SESSION_ROW_HEIGHT = 104;
+
 export default function SessionsScreen() {
-  const { user } = useAuth();
+  const { user, profile: authProfile } = useAuth();
   const { theme } = useTheme();
   const router = useRouter();
   const colors = Colors[theme];
@@ -18,8 +20,7 @@ export default function SessionsScreen() {
   const [currentDeviceId, setCurrentDeviceId] = useState('');
 
   useEffect(() => {
-    const { deviceId } = SessionManager.getDeviceInfo();
-    setCurrentDeviceId(deviceId);
+    SessionManager.getDeviceId().then(setCurrentDeviceId);
     fetchSessions();
   }, [user]);
 
@@ -59,7 +60,7 @@ export default function SessionsScreen() {
     );
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = useCallback(({ item }: { item: any }) => {
     const isCurrent = item.device_id === currentDeviceId;
     
     return (
@@ -97,7 +98,61 @@ export default function SessionsScreen() {
         )}
       </View>
     );
-  };
+  }, [colors, currentDeviceId, handleTerminate]);
+
+  const getItemLayout = useCallback((_: ArrayLike<any> | null | undefined, index: number) => ({
+    length: SESSION_ROW_HEIGHT,
+    offset: SESSION_ROW_HEIGHT * index,
+    index,
+  }), []);
+
+  if (authProfile?.subscription_status !== 'enterprise') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>AKTİF OTURUMLAR</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: 80, height: 80, borderRadius: 24, backgroundColor: colors.warning + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+            <Ionicons name="lock-closed" size={40} color={colors.warning} />
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: '900', color: colors.text, marginBottom: 12, textAlign: 'center', letterSpacing: -0.5, textTransform: 'uppercase' }}>
+            Kurumsal Pakete Özel
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginBottom: 32, lineHeight: 22, fontWeight: '500' }}>
+            Çoklu cihaz oturum yönetimi ve aktif cihaz kontrolü sadece Kurumsal paket abonelerine özeldir.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [{
+              width: '100%',
+              height: 56,
+              backgroundColor: colors.tint,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: 10,
+              opacity: pressed ? 0.8 : 1,
+            }]}
+            onPress={() => router.push('/subscription')}
+          >
+            <Ionicons name="diamond-outline" size={20} color={colors.textInverse} />
+            <Text style={{ color: colors.textInverse, fontSize: 14, fontWeight: '900', letterSpacing: 1 }}>KURUMSAL PAKETE GEÇ</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [{ marginTop: 16, opacity: pressed ? 0.5 : 1 }]}
+            onPress={() => router.back()}
+          >
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 1 }}>GERİ DÖN</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -125,6 +180,10 @@ export default function SessionsScreen() {
           data={sessions}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
+          getItemLayout={getItemLayout}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={8}
+          maxToRenderPerBatch={5}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
