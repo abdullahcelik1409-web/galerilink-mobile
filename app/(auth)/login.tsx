@@ -176,14 +176,6 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          <View style={styles.secondaryActionRow}>
-            <Link href="/(auth)/reset-password" asChild>
-              <Pressable disabled={isLoading}>
-                <Text style={[styles.secondaryActionText, { color: colors.textSecondary }]}>Şifremi unuttum</Text>
-              </Pressable>
-            </Link>
-          </View>
-
           <Pressable
             style={({ pressed }) => [
               styles.loginButton,
@@ -295,15 +287,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: -6,
-  },
-  secondaryActionRow: {
-    alignItems: 'flex-end',
-    marginTop: -4,
-    marginBottom: 16,
-  },
-  secondaryActionText: {
-    fontSize: 13,
-    fontWeight: '700',
   },
   loginButton: {
     borderRadius: 12,
