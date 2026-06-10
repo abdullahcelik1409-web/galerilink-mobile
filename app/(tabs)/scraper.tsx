@@ -22,18 +22,31 @@ const isAllowedScraperUrl = (url: string) => {
   }
 };
 
-const isValidScrapePayload = (data: any) => {
+const getScrapePayloadIssues = (data: any) => {
   const imageUrls = normalizeScrapedImageUrls(data?.imageUrls);
   if (data && typeof data === 'object') {
     data.imageUrls = imageUrls;
   }
 
-  return data
-    && typeof data === 'object'
-    && typeof data.title === 'string'
-    && data.title.trim().length > 0
-    && (typeof data.price === 'number' || typeof data.price === 'string')
-    && imageUrls.length > 0;
+  const issues: string[] = [];
+  if (!data || typeof data !== 'object') {
+    return { imageUrls, issues: ['payload'] };
+  }
+  if (typeof data.title !== 'string' || data.title.trim().length === 0) {
+    issues.push('title');
+  }
+  if (typeof data.price !== 'number' && typeof data.price !== 'string') {
+    issues.push('price');
+  }
+  if (imageUrls.length === 0) {
+    issues.push('imageUrls');
+  }
+
+  return { imageUrls, issues };
+};
+
+const isValidScrapePayload = (data: any) => {
+  return getScrapePayloadIssues(data).issues.length === 0;
 };
 
 /**
@@ -45,19 +58,145 @@ const SCRAPE_SCRIPT = `
     var data = { expertise: {}, imageUrls: [], description: "" };
     
     function clean(t) { return t ? t.innerText.trim() : ""; }
+    function cleanText(value) {
+      return value ? String(value).replace(/<[^>]*>?/gm, '').replace(/\\s+/g, ' ').trim() : "";
+    }
+    function readMeta(names) {
+      for (var mi = 0; mi < names.length; mi++) {
+        var selector = 'meta[property="' + names[mi] + '"],meta[name="' + names[mi] + '"],meta[itemprop="' + names[mi] + '"]';
+        var meta = document.querySelector(selector);
+        var content = meta ? meta.getAttribute('content') : '';
+        if (content) return cleanText(content);
+      }
+      return "";
+    }
+    function firstNumber(value) {
+      var match = String(value || '').match(/[0-9][0-9.,]*/);
+      return match ? parseInt(match[0].replace(/[^0-9]/g, ''), 10) || 0 : 0;
+    }
+    function normalizeLabel(value) {
+      return cleanText(value)
+        .toLocaleLowerCase('tr-TR')
+        .replace(/[\\u0131\\u0130]/g, 'i')
+        .replace(/[\\u011f\\u011e]/g, 'g')
+        .replace(/[\\u00fc\\u00dc]/g, 'u')
+        .replace(/[\\u015f\\u015e]/g, 's')
+        .replace(/[\\u00f6\\u00d6]/g, 'o')
+        .replace(/[\\u00e7\\u00c7]/g, 'c');
+    }
+    function readInfoPair(row) {
+      var labelNode = row.querySelector('strong,dt,label,[data-testid*="label"],[class*="label"],[class*="key"]');
+      var valueNode = row.querySelector('span,dd,[data-testid*="value"],[class*="value"]');
+      var label = clean(labelNode);
+      var value = clean(valueNode);
+      if (label && value && label !== value) return { label: label, value: value };
+
+      var text = cleanText(row.innerText || row.textContent || '');
+      var parts = text.split(/[\\n:]/).map(cleanText).filter(Boolean);
+      if (parts.length >= 2) return { label: parts[0], value: parts.slice(1).join(' ') };
+      return null;
+    }
+    function applyInfo(label, value) {
+      var key = normalizeLabel(label).replace(/:$/, '').trim();
+      if (!key || !value) return;
+      if (key === "marka") data.brand = value;
+      if (key === "seri") data.series = value;
+      if (key === "model") data.model = value;
+      if (key === "yil") data.year = parseInt(value) || 0;
+      if (key === "km" || key === "kilometre") data.km = firstNumber(value);
+      if (key === "yakit tipi" || key === "yakit") {
+        data.fuel = value.replace(/\\s*\\/\\s*EURO\\s*\\d+/i, '').trim();
+      }
+      if (key === "vites") data.transmission = value;
+      if (key === "kasa tipi") data.bodyType = value;
+      if (key === "motor hacmi") return "engineCC";
+      if (key === "motor gucu") return "engineHP";
+      return "";
+    }
+    function normalizeImageCandidate(raw) {
+      if (!raw) return "";
+      var candidate = String(raw).split(',')[0].trim().split(/\\s+/)[0];
+      if (!candidate || candidate.indexOf('data:') === 0 || candidate.indexOf('blob:') === 0) return "";
+      if (candidate.indexOf('//') === 0) candidate = 'https:' + candidate;
+      try {
+        return new URL(candidate, window.location.href).href.split('#')[0];
+      } catch(e) {
+        return "";
+      }
+    }
+    function addImage(raw) {
+      var url = normalizeImageCandidate(raw);
+      if (!url || data.imageUrls.indexOf(url) !== -1) return;
+      try {
+        var parsed = new URL(url);
+        var host = parsed.hostname;
+        var allowedHost = host === 'sahibinden.com' || host.slice(-15) === '.sahibinden.com' || host === 'shbdn.com' || host.slice(-10) === '.shbdn.com';
+        if (!allowedHost || parsed.protocol !== 'https:' || /clear\\.gif|pixel|spacer/i.test(parsed.pathname)) return;
+        data.imageUrls.push(url);
+      } catch(e) {}
+    }
+    function walkStructuredData(node) {
+      if (!node) return;
+      if (Array.isArray(node)) {
+        for (var wi = 0; wi < node.length; wi++) walkStructuredData(node[wi]);
+        return;
+      }
+      if (typeof node !== 'object') return;
+
+      if (!data.title && (typeof node.name === 'string' || typeof node.headline === 'string')) {
+        data.title = cleanText(node.name || node.headline);
+      }
+      if (!data.description && typeof node.description === 'string') {
+        data.description = cleanText(node.description);
+      }
+      if (!data.price && node.offers && (typeof node.offers.price === 'string' || typeof node.offers.price === 'number')) {
+        data.price = firstNumber(node.offers.price);
+      }
+      if (node.image) {
+        if (Array.isArray(node.image)) {
+          for (var ii = 0; ii < node.image.length; ii++) {
+            addImage(typeof node.image[ii] === 'string' ? node.image[ii] : node.image[ii] && node.image[ii].url);
+          }
+        } else {
+          addImage(typeof node.image === 'string' ? node.image : node.image.url);
+        }
+      }
+
+      for (var key in node) {
+        if (Object.prototype.hasOwnProperty.call(node, key)) walkStructuredData(node[key]);
+      }
+    }
+    function collectStructuredData() {
+      var jsonLdTags = document.querySelectorAll('script[type="application/ld+json"]');
+      for (var ld = 0; ld < jsonLdTags.length; ld++) {
+        try {
+          walkStructuredData(JSON.parse(jsonLdTags[ld].textContent || jsonLdTags[ld].innerHTML || '{}'));
+        } catch(e) {}
+      }
+    }
+    collectStructuredData();
 
     // 1. Fiyat ve Başlık
-    var priceEl = document.querySelector('.price');
-    data.price = priceEl ? parseInt(priceEl.innerText.replace(/[^0-9]/g, '')) : 0;
-    data.title = clean(document.querySelector('.classified-title-container h1')) || clean(document.querySelector('.classified-title')) || document.title.split('-')[0].trim();
-    data.ilanNo = clean(document.querySelector('#classifiedId')) || clean(document.querySelector('.classifiedId'));
+    var priceEl = document.querySelector('[itemprop="price"],[data-testid*="price"],[class*="price"]');
+    data.price = data.price || (priceEl ? firstNumber(priceEl.innerText) : 0) || firstNumber(readMeta(['product:price:amount', 'og:price:amount', 'twitter:data1']));
+    data.title = data.title || readMeta(['og:title', 'twitter:title']) || clean(document.querySelector('h1')) || document.title.split('-')[0].trim();
+    var normalizedPageText = (document.body ? document.body.innerText : '').replace(/\\u0130/g, 'I').replace(/\\u0131/g, 'i');
+    var ilanNoMatch = normalizedPageText.match(/(?:ilan|classified|ad)\\s*(?:no|number|id)\\s*:?\\s*([0-9]+)/i);
+    data.ilanNo = ilanNoMatch ? ilanNoMatch[1] : '';
 
     // 2. Teknik Bilgiler
-    var rows = document.querySelectorAll('.classified-info-list li');
+    var rows = document.querySelectorAll('li,tr,dl > div,[data-testid*="detail"],[data-testid*="attribute"],[class*="attribute"],[class*="property"]');
     var engineCC = "", engineHP = "";
     
     for (var i = 0; i < rows.length; i++) {
       try {
+        var pair = readInfoPair(rows[i]);
+        if (pair) {
+          var result = applyInfo(pair.label, pair.value);
+          if (result === "engineCC") engineCC = pair.value;
+          if (result === "engineHP") engineHP = pair.value;
+          continue;
+        }
         var labelNode = rows[i].querySelector('strong');
         var valueNode = rows[i].querySelector('span');
         if (!labelNode || !valueNode) continue;
@@ -91,13 +230,21 @@ const SCRAPE_SCRIPT = `
     }
 
     // 3. Görseller
+    addImage(readMeta(['og:image', 'twitter:image', 'image']));
+
+    var allSources = document.getElementsByTagName('source');
+    for (var sj = 0; sj < allSources.length; sj++) {
+      addImage(allSources[sj].getAttribute('srcset') || allSources[sj].getAttribute('data-srcset'));
+    }
+
     var allImgs = document.getElementsByTagName('img');
     for (var j = 0; j < allImgs.length; j++) {
-      var src = allImgs[j].getAttribute('data-src') || allImgs[j].getAttribute('data-original') || allImgs[j].src;
-      if (src && src.indexOf('photos/') !== -1 && src.indexOf('thmb_') === -1 && src.indexOf('clear.gif') === -1) {
-        var big = src.replace('.avif', '.jpg').split('?')[0];
-        if (data.imageUrls.indexOf(big) === -1) data.imageUrls.push(big);
-      }
+      addImage(allImgs[j].getAttribute('src'));
+      addImage(allImgs[j].getAttribute('data-src'));
+      addImage(allImgs[j].getAttribute('data-original'));
+      addImage(allImgs[j].getAttribute('data-lazy'));
+      addImage(allImgs[j].getAttribute('srcset'));
+      addImage(allImgs[j].getAttribute('data-srcset'));
     }
 
     // 4. Ekspertiz
@@ -324,8 +471,15 @@ export default function ScraperScreen() {
       
       if (msg.type === 'SCRAPE_SUCCESS') {
         const data = msg.payload;
+        const payloadIssues = getScrapePayloadIssues(data);
         if (!isAllowedScraperUrl(currentUrl) || !isValidScrapePayload(data)) {
           setIsScraping(false);
+          console.warn('[Scraper] Invalid payload.', {
+            allowedUrl: isAllowedScraperUrl(currentUrl),
+            issues: payloadIssues.issues,
+            imageCount: payloadIssues.imageUrls.length,
+            url: currentUrl,
+          });
           Alert.alert('Hata', 'Bu sayfadan ilan verisi alinamaz.');
           return;
         }

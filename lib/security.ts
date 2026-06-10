@@ -2,6 +2,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const MAX_SCRAPED_IMAGES = 10;
 const MAX_URL_LENGTH = 2048;
 const ALLOWED_SCRAPER_IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|webp)(\?|$)/i;
+const ALLOWED_SCRAPER_IMAGE_PATH_HINTS = /(\/photos\/|\/classified|\/classifieds|\/image|\/photo)/i;
 
 export function getRouteParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -28,6 +29,10 @@ export function isAllowedSahibindenHost(hostname: string) {
   return hostname === 'sahibinden.com' || hostname.endsWith('.sahibinden.com');
 }
 
+export function isAllowedSahibindenImageHost(hostname: string) {
+  return isAllowedSahibindenHost(hostname) || hostname === 'shbdn.com' || hostname.endsWith('.shbdn.com');
+}
+
 export function isAllowedScrapedImageUrl(url: unknown): url is string {
   if (typeof url !== 'string' || url.length === 0 || url.length > MAX_URL_LENGTH) {
     return false;
@@ -36,8 +41,11 @@ export function isAllowedScrapedImageUrl(url: unknown): url is string {
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'https:'
-      && isAllowedSahibindenHost(parsed.hostname)
-      && ALLOWED_SCRAPER_IMAGE_EXTENSIONS.test(parsed.pathname);
+      && isAllowedSahibindenImageHost(parsed.hostname)
+      && (
+        ALLOWED_SCRAPER_IMAGE_EXTENSIONS.test(parsed.pathname)
+        || ALLOWED_SCRAPER_IMAGE_PATH_HINTS.test(parsed.pathname)
+      );
   } catch {
     return false;
   }
