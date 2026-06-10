@@ -1,5 +1,4 @@
 import Colors from '@/constants/Colors';
-import { getOptimizedImageUrl } from '@/lib/image-url';
 import { useTheme } from '@/lib/theme-context';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -13,6 +12,12 @@ interface ListingCardProps {
   isVerified?: boolean;
 }
 
+const getFirstImageUrl = (images: unknown) => {
+  if (!Array.isArray(images)) return null;
+  const imageUrl = images.find((url): url is string => typeof url === 'string' && url.trim().length > 0);
+  return imageUrl?.trim() ?? null;
+};
+
 /**
  * ListingCard Component — Forensic Architect Design
  */
@@ -23,7 +28,7 @@ function ListingCard({ car, onPress, isVerified = false }: ListingCardProps) {
   const sellerCity = sellerProfile?.city || car.location_city || '';
   const isSellerVerified = sellerProfile?.hesap_durumu === 'onaylandi';
   const isOpportunity = car.is_opportunity === true;
-  const imageUrl = car.thumbnail_url ?? getOptimizedImageUrl(car.images?.[0], { width: 720, height: 440 });
+  const imageUrl = car.thumbnail_url ?? getFirstImageUrl(car.images);
   const hasImages = !!imageUrl;
 
   return (
