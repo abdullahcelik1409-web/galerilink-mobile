@@ -9,12 +9,17 @@ const CHUNK_COUNT_SUFFIX = '__chunk_count';
 const DEFAULT_API_TIMEOUT_MS = 15000;
 const webMemoryStorage = new Map<string, string>();
 
-const getChunkCountKey = (key: string) => `${key}:${CHUNK_COUNT_SUFFIX}`;
-const getChunkKey = (key: string, index: number) => `${key}:chunk:${index}`;
+const getSecureStoreKey = (key: string) => {
+  const normalizedKey = key.replace(/[^A-Za-z0-9._-]/g, '_');
+  return normalizedKey.length > 0 ? normalizedKey : 'supabase_auth';
+};
+
+const getChunkCountKey = (key: string) => `${getSecureStoreKey(key)}.${CHUNK_COUNT_SUFFIX}`;
+const getChunkKey = (key: string, index: number) => `${getSecureStoreKey(key)}.chunk.${index}`;
 
 const removeSecureItem = async (key: string) => {
   try {
-    await SecureStore.deleteItemAsync(key);
+    await SecureStore.deleteItemAsync(getSecureStoreKey(key));
   } catch {
     // no-op
   }
@@ -83,7 +88,7 @@ const ExpoSecureStoreAdapter = {
         return null;
       }
 
-      return await SecureStore.getItemAsync(key);
+      return await SecureStore.getItemAsync(getSecureStoreKey(key));
     } catch {
       return null;
     }
@@ -97,7 +102,7 @@ const ExpoSecureStoreAdapter = {
     await removeChunkedSecureItem(key);
 
     if (value.length <= SECURE_STORE_CHUNK_SIZE) {
-      await SecureStore.setItemAsync(key, value);
+      await SecureStore.setItemAsync(getSecureStoreKey(key), value);
       return;
     }
 
