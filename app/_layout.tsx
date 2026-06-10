@@ -108,12 +108,9 @@ function RootLayoutNav() {
         if (!user) return;
         
         try {
-          const { isExceeded, isApproved } = await SessionManager.checkSessionLimit(user.id);
-          const deviceId = await SessionManager.getDeviceId();
-          const { data: sessions } = await SessionManager.getActiveSessions(user.id);
-          const isAlreadyRegistered = sessions?.some(s => s.device_id === deviceId);
+          const sessionClaim = await SessionManager.claimCurrentDeviceSession(user.id);
 
-          if (isExceeded && !isAlreadyRegistered && !isApproved) {
+          if (sessionClaim.requiresSessionManagement) {
             if (isMounted) {
               setIsSessionAllowed(false);
               router.replace('/sessions');

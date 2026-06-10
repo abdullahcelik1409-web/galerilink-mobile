@@ -64,18 +64,7 @@ export default function LoginScreen() {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            const { isExceeded } = await SessionManager.checkSessionLimit(user.id);
-            const deviceId = await SessionManager.getDeviceId();
-            const { data: sessions } = await SessionManager.getActiveSessions(user.id);
-            const isAlreadyRegistered = sessions?.some(s => s.device_id === deviceId);
-
-            if (isExceeded && !isAlreadyRegistered) {
-              await supabase.auth.signOut();
-              Alert.alert(
-                'Oturum Sınırı Aşıldı',
-                'Hesabınıza tanımlı maksimum cihaz sınırına ulaştınız. Giriş yapabilmek için lütfen uygulamanın açık olduğu diğer bir cihazdan oturumunuzu kapatın.'
-              );
-            }
+            await SessionManager.claimCurrentDeviceSession(user.id);
           }
         } catch (sessionError) {
           logDevError('Login session-limit check', sessionError);

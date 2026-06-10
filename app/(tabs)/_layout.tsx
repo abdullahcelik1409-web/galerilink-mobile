@@ -7,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { useDeviceSession } from '@/hooks/use-device-session';
+import { supabase } from '@/lib/supabase';
 
 /**
  * İkon bileşeni — Tab bar'da kullanılır.
@@ -26,18 +27,67 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const { user, isTrialExpired, isLoading } = useAuth();
+  const { user, isTrialExpired, isLoading, signOut } = useAuth();
   const { theme } = useTheme();
   const colors = Colors[theme];
   const router = useRouter();
   const segments = useSegments();
-  const { registerCurrentDevice } = useDeviceSession();
+  const { registerCurrentDevice, getCurrentDeviceId, isCurrentDeviceSessionActive } = useDeviceSession();
 
   React.useEffect(() => {
-    if (user) {
-      void registerCurrentDevice(user.id);
-    }
-  }, [registerCurrentDevice, user]);
+    if (!user) return;
+
+    let isMounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const syncDeviceSession = async () => {
+      try {
+        const [isActive, deviceId] = await Promise.all([
+          isCurrentDeviceSessionActive(user.id),
+          getCurrentDeviceId(),
+        ]);
+        if (!isMounted) return;
+
+        if (!isActive) {
+          await signOut();
+          return;
+        }
+
+        await registerCurrentDevice(user.id);
+
+        channel = supabase
+          .channel(`user_session_${user.id}_${deviceId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'DELETE',
+              schema: 'public',
+              table: 'user_sessions',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              if (payload.old?.device_id === deviceId) {
+                void signOut();
+              }
+            }
+          )
+          .subscribe();
+      } catch {
+        if (isMounted) {
+          void registerCurrentDevice(user.id);
+        }
+      }
+    };
+
+    void syncDeviceSession();
+
+    return () => {
+      isMounted = false;
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
+    };
+  }, [getCurrentDeviceId, isCurrentDeviceSessionActive, registerCurrentDevice, signOut, user]);
 
   // Route koruması: Süresi dolmuş kullanıcıları abonelik sayfasına yönlendir
   useEffect(() => {

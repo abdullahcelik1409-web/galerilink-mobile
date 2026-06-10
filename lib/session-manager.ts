@@ -137,12 +137,14 @@ export const SessionManager = {
    * Aktif oturum sayÄ±sÄ±nÄ± kontrol et
    */
   checkSessionLimit: async (userId: string) => {
-    // 1. Profil ve oturum sayÄ±larÄ±nÄ± al
     const { data: profile } = await supabase
       .from('profiles')
-      .select('max_sessions')
+      .select('max_sessions, subscription_status')
       .eq('id', userId)
       .single();
+
+    const limit = Math.max(1, Number(profile?.max_sessions) || 1);
+    const isEnterprise = profile?.subscription_status === 'enterprise';
 
     const { count } = await supabase
       .from('user_sessions')
@@ -163,10 +165,64 @@ export const SessionManager = {
     */
 
     return {
-      limit: profile?.max_sessions || 1,
+      limit,
       current: count || 0,
-      isExceeded: (count || 0) >= (profile?.max_sessions || 1),
+      isExceeded: (count || 0) >= limit,
       isApproved: false, // Pasife alÄ±ndÄ±ÄŸÄ± iÃ§in her zaman false
+      isEnterprise,
+    };
+  },
+
+  claimCurrentDeviceSession: async (userId: string) => {
+    const limitInfo = await SessionManager.checkSessionLimit(userId);
+    const deviceId = await SessionManager.getDeviceId();
+    const { data: sessions, error } = await SessionManager.getActiveSessions(userId);
+
+    if (error) {
+      throw error;
+    }
+
+    const activeSessions = sessions ?? [];
+    const isAlreadyRegistered = activeSessions.some((session) => session.device_id === deviceId);
+    const isExceeded = activeSessions.length >= limitInfo.limit;
+
+    if (isAlreadyRegistered || !isExceeded) {
+      await SessionManager.upsertSession(userId);
+      return {
+        isAllowed: true,
+        transferred: false,
+        requiresSessionManagement: false,
+        ...limitInfo,
+      };
+    }
+
+    if (limitInfo.isEnterprise) {
+      return {
+        isAllowed: false,
+        transferred: false,
+        requiresSessionManagement: true,
+        ...limitInfo,
+      };
+    }
+
+    const otherSessions = activeSessions.filter((session) => session.device_id !== deviceId);
+    const removeCount = Math.max(1, activeSessions.length - limitInfo.limit + 1);
+    const sessionsToTerminate = otherSessions.slice(-removeCount);
+
+    for (const session of sessionsToTerminate) {
+      const { error: terminateError } = await SessionManager.terminateSession(userId, session.device_id);
+      if (terminateError) {
+        throw terminateError;
+      }
+    }
+
+    await SessionManager.upsertSession(userId);
+
+    return {
+      isAllowed: true,
+      transferred: sessionsToTerminate.length > 0,
+      requiresSessionManagement: false,
+      ...limitInfo,
     };
   },
 
