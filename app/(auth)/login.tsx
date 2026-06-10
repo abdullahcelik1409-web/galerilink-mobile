@@ -13,11 +13,13 @@ import {
   Keyboard,
 } from 'react-native';
 import { Link } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/Colors';
 import { useTheme } from '@/lib/theme-context';
 import { SessionManager } from '@/lib/session-manager';
+import { getErrorMessage, isNetworkLikeError, logDevError } from '@/lib/error-utils';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -59,28 +61,38 @@ export default function LoginScreen() {
         }
         Alert.alert('Giriş Başarısız', message);
       } else {
-        // Giriş başarılı, şimdi oturum sınırını kontrol et
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { isExceeded } = await SessionManager.checkSessionLimit(user.id);
-          const { deviceId } = SessionManager.getDeviceInfo();
-          
-          // Cihaz zaten kayıtlı mı bak?
-          const { data: sessions } = await SessionManager.getActiveSessions(user.id);
-          const isAlreadyRegistered = sessions?.some(s => s.device_id === deviceId);
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { isExceeded } = await SessionManager.checkSessionLimit(user.id);
+            const deviceId = await SessionManager.getDeviceId();
+            const { data: sessions } = await SessionManager.getActiveSessions(user.id);
+            const isAlreadyRegistered = sessions?.some(s => s.device_id === deviceId);
 
-          if (isExceeded && !isAlreadyRegistered) {
-            // Katı Cihaz Sınırı: Limiti aşan cihazı anında dışarı atıyoruz.
-            await supabase.auth.signOut();
-            Alert.alert(
-              'Oturum Sınırı Aşıldı',
-              'Hesabınıza tanımlı maksimum cihaz sınırına ulaştınız. Giriş yapabilmek için lütfen uygulamanın açık olduğu diğer bir cihazdan oturumunuzu kapatın.'
-            );
+            if (isExceeded && !isAlreadyRegistered) {
+              await supabase.auth.signOut();
+              Alert.alert(
+                'Oturum Sınırı Aşıldı',
+                'Hesabınıza tanımlı maksimum cihaz sınırına ulaştınız. Giriş yapabilmek için lütfen uygulamanın açık olduğu diğer bir cihazdan oturumunuzu kapatın.'
+              );
+            }
           }
+        } catch (sessionError) {
+          logDevError('Login session-limit check', sessionError);
+          Alert.alert(
+            'Giriş Kontrolü Tamamlanamadı',
+            'Giriş yapıldı ancak oturum limiti kontrolü tamamlanamadı. Lütfen tekrar deneyin.'
+          );
         }
       }
-    } catch (e: any) {
-      Alert.alert('Bağlantı Hatası', 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.');
+    } catch (error: unknown) {
+      logDevError('Login request', error);
+      Alert.alert(
+        isNetworkLikeError(error) ? 'Bağlantı Hatası' : 'Giriş Hatası',
+        isNetworkLikeError(error)
+          ? `Sunucuya bağlanılamadı. Teknik detay: ${getErrorMessage(error)}`
+          : getErrorMessage(error)
+      );
     } finally {
       setIsLoading(false);
     }
@@ -99,22 +111,22 @@ export default function LoginScreen() {
       >
         <View style={styles.logoSection}>
           <View style={[styles.logoContainer, { backgroundColor: colors.tintLight, borderColor: colors.tint }]}>
-            <Text style={styles.logoIcon}>🚗</Text>
+            <Ionicons name="car-sport-outline" size={34} color={colors.tint} />
           </View>
-          <Text style={[styles.brand, { color: colors.tint }]}>GALERILINK</Text>
+          <Text style={[styles.brand, { color: colors.text }]}>GALERILINK</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>B2B Oto Galeri Platformu</Text>
         </View>
 
         <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
-          <Text style={[styles.formTitle, { color: colors.text }]}>Giriş Yap</Text>
+          <Text style={[styles.formTitle, { color: colors.text }]}>Giriş yap</Text>
           <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
-            Galeri hesabınızla devam edin
+            Galeri hesabınızla devam edin.
           </Text>
 
           <View style={styles.inputGroup}>
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>E-posta</Text>
             <View style={[styles.inputWrapper, { backgroundColor: colors.background, borderColor: colors.surfaceBorder }]}>
-              <Text style={styles.inputIcon}>✉️</Text>
+              <Ionicons name="mail-outline" size={19} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.textInput, { color: colors.text }]}
                 placeholder="ornek@galeri.com"
@@ -135,7 +147,7 @@ export default function LoginScreen() {
           <View style={styles.inputGroup}>
             <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Şifre</Text>
             <View style={[styles.inputWrapper, { backgroundColor: colors.background, borderColor: colors.surfaceBorder }]}>
-              <Text style={styles.inputIcon}>🔒</Text>
+              <Ionicons name="lock-closed-outline" size={19} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 ref={passwordRef}
                 style={[styles.textInput, { color: colors.text }]}
@@ -155,11 +167,21 @@ export default function LoginScreen() {
                 style={styles.eyeButton}
                 hitSlop={8}
               >
-                <Text style={styles.eyeIcon}>
-                  {showPassword ? '🙈' : '👁️'}
-                </Text>
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={colors.textMuted}
+                />
               </Pressable>
             </View>
+          </View>
+
+          <View style={styles.secondaryActionRow}>
+            <Link href="/(auth)/reset-password" asChild>
+              <Pressable disabled={isLoading}>
+                <Text style={[styles.secondaryActionText, { color: colors.textSecondary }]}>Şifremi unuttum</Text>
+              </Pressable>
+            </Link>
           </View>
 
           <Pressable
@@ -175,7 +197,7 @@ export default function LoginScreen() {
             {isLoading ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Text style={[styles.loginButtonText, { color: colors.textInverse }]}>Giriş Yap</Text>
+              <Text style={[styles.loginButtonText, { color: colors.textInverse }]}>Giriş yap</Text>
             )}
           </Pressable>
         </View>
@@ -184,7 +206,7 @@ export default function LoginScreen() {
           <Text style={[styles.footerText, { color: colors.textSecondary }]}>Hesabınız yok mu? </Text>
           <Link href="/(auth)/register" asChild>
             <Pressable>
-              <Text style={[styles.footerLink, { color: colors.tint }]}>Kayıt Olun</Text>
+              <Text style={[styles.footerLink, { color: colors.tint }]}>Kayıt olun</Text>
             </Pressable>
           </Link>
         </View>
@@ -199,29 +221,27 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingTop: Platform.OS === 'ios' ? 40 : 28,
     paddingBottom: 40,
   },
   logoSection: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: 28,
   },
   logoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    width: 68,
+    height: 68,
+    borderRadius: 18,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  logoIcon: {
-    fontSize: 32,
+    marginBottom: 14,
   },
   brand: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '900',
     letterSpacing: 4,
   },
   subtitle: {
@@ -230,21 +250,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   formCard: {
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 24,
+    padding: 22,
   },
   formTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 6,
   },
   formSubtitle: {
     fontSize: 14,
-    marginBottom: 24,
+    marginBottom: 22,
+    lineHeight: 20,
   },
   inputGroup: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 13,
@@ -261,7 +282,6 @@ const styles = StyleSheet.create({
     height: 50,
   },
   inputIcon: {
-    fontSize: 16,
     marginRight: 10,
   },
   textInput: {
@@ -270,10 +290,20 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   eyeButton: {
-    padding: 4,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -6,
   },
-  eyeIcon: {
-    fontSize: 18,
+  secondaryActionRow: {
+    alignItems: 'flex-end',
+    marginTop: -4,
+    marginBottom: 16,
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   loginButton: {
     borderRadius: 12,
@@ -295,7 +325,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 22,
   },
   footerText: {
     fontSize: 14,
@@ -305,4 +335,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
